@@ -186,7 +186,7 @@ export function createDemoApi(options: { now?: number; latencyMs?: number } = {}
     },
     async createDeviceInvite({ familyId, deviceId }): Promise<Invite> {
       await wait(latency);
-      const invite = { code: randomCode(), expiresAt: Date.now() + 24 * 3600_000 };
+      const invite = { code: randomCode(), expiresAt: Date.now() + 15 * 60_000 };
       // Pretend the parent's phone enters the code a few seconds later.
       const key = k(familyId, deviceId);
       clearTimeout(pendingClaims.get(key));

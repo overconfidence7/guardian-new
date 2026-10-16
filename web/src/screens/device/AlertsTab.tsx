@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useEvents, useNow } from '../../data/hooks';
-import { ButtonA, Button } from '../../components/Button';
+import { Button } from '../../components/Button';
 import { EmptyState, Spinner } from '../../components/EmptyState';
 import { EventItem } from '../../components/EventItem';
 import { Field, Input } from '../../components/Field';
 import { Icon } from '../../components/Icon';
-import { setParentPhone, telHref, useParentPhone } from '../../lib/parentPhone';
+import { setParentPhone, useParentPhone } from '../../lib/parentPhone';
 import { dayLabel } from '../../lib/time';
 import type { Device, EventDoc } from '../../lib/types';
 
@@ -25,19 +25,14 @@ function CallCard({ device }: { device: Device }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(phone);
   if (phone && !editing) {
+    // The header already has the big "Call" button; here we only show which number it uses.
     return (
-      <div className="call-card">
-        <div className="grow">
-          <strong>Talking helps most.</strong>
-          <p className="small muted">Calls from family always ring through, even with screening on.</p>
-        </div>
-        <ButtonA href={telHref(phone)} variant="primary" size="lg" icon="phone">
-          Call {device.parentName}
-        </ButtonA>
+      <p className="small muted call-number">
+        The Call button dials {phone}. Calls from family always ring through, even with screening on.{' '}
         <button type="button" className="link-btn small" onClick={() => { setValue(phone); setEditing(true); }}>
           Change number
         </button>
-      </div>
+      </p>
     );
   }
   return (
