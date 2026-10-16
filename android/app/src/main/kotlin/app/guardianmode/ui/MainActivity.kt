@@ -1,5 +1,6 @@
 package app.guardianmode.ui
 
+import androidx.compose.ui.platform.LocalConfiguration
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -40,7 +41,6 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /** The home screen. Guardian is the phone's launcher, so this activity is always one tap away. */
 class MainActivity : ComponentActivity() {
@@ -110,7 +110,7 @@ class MainActivity : ComponentActivity() {
                         changes = state.changes,
                         paused = state.isPaused(System.currentTimeMillis()),
                         pausedUntil = state.pausedUntil.takeIf { it > 0 }?.let {
-                            Instant.ofEpochMilli(it).atZone(now.zone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()))
+                            Instant.ofEpochMilli(it).atZone(now.zone).format(DateTimeFormatter.ofPattern("h:mm a", LocalConfiguration.current.locales[0]))
                         },
                         paired = state.pairing != null,
                     ),

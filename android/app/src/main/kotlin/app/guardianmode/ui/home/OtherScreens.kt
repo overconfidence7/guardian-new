@@ -1,5 +1,6 @@
 package app.guardianmode.ui.home
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,7 +42,6 @@ import app.guardianmode.ui.theme.Guardian
 import coil3.compose.AsyncImage
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class AppEntry(val packageName: String, val label: String)
 
@@ -132,7 +132,7 @@ fun PhotosScreen(photos: List<PhotoItem>, now: ZonedDateTime, onBack: () -> Unit
 
 @Composable
 fun RemindersScreen(today: List<ReminderOccurrence>, done: Set<String>, onBack: () -> Unit) {
-    val timeFormat = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+    val timeFormat = DateTimeFormatter.ofPattern("h:mm a", LocalConfiguration.current.locales[0])
     GuardianPage("Today's reminders", onBack) {
         if (today.isEmpty()) {
             Text("Nothing else today.", style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)

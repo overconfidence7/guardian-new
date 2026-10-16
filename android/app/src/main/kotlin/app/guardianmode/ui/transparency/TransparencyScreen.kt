@@ -1,5 +1,6 @@
 package app.guardianmode.ui.transparency
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +49,6 @@ import app.guardianmode.ui.theme.Guardian
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class TransparencyUi(
     val items: List<SharingItem>,
@@ -75,7 +75,7 @@ private val TOGGLEABLE = setOf("pause", "remoteAccess", "longCall", "screening",
 fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: ZoneId = ZoneId.systemDefault()) {
     var confirmRemove by remember { mutableStateOf<HelperInfo?>(null) }
     var confirmStop by remember { mutableStateOf(false) }
-    val stamp = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a", Locale.getDefault())
+    val stamp = DateTimeFormatter.ofPattern("EEE MMM d, h:mm a", LocalConfiguration.current.locales[0])
 
     GuardianPage("What my family can see", actions::onBack) {
         Text(

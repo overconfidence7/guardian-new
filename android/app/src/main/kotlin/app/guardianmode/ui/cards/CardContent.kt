@@ -1,5 +1,6 @@
 package app.guardianmode.ui.cards
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +56,6 @@ import app.guardianmode.ui.theme.Guardian
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 interface CardActions {
     fun callFamily(phone: String)
@@ -239,7 +239,7 @@ fun SafeWordCard(config: DeviceConfig, actions: CardActions) {
 fun ReminderCard(request: CardRequest, actions: CardActions) {
     val ink = MaterialTheme.colorScheme.onPrimaryContainer
     val time = remember(request.reminderAt) {
-        Instant.ofEpochMilli(request.reminderAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()))
+        Instant.ofEpochMilli(request.reminderAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", LocalConfiguration.current.locales[0]))
     }
     CardFrame(Icons.Rounded.Alarm, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer) {
         Text(time, style = MaterialTheme.typography.titleLarge, color = ink)

@@ -85,6 +85,9 @@ android {
         warningsAsErrors = false
         abortOnError = true
         checkReleaseBuilds = true
+        // Print every issue in the CI log, not only the first.
+        textReport = true
+        textOutput = file("stdout")
         disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
     }
 
