@@ -16,6 +16,7 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
@@ -225,10 +226,16 @@ class CloudSync(
         runCatching { ensureSignedIn() }.onFailure { return@withLock }
         val uploaded = mutableSetOf<String>()
         for (event in pending) {
-            val ok = runCatching { deviceDoc(p).collection("events").document(event.id).set(eventMap(event)).await() }
-                .onFailure { Log.w(TAG, "Event upload failed, will retry", it) }
-                .isSuccess
-            if (!ok) break
+            val result = runCatching { deviceDoc(p).collection("events").document(event.id).set(eventMap(event)).await() }
+            val error = result.exceptionOrNull()
+            // Events are create-only, so a retry of an event that already reached the server is
+            // denied. Retrying a denied event can never succeed; drop it instead of blocking the queue.
+            if (error is FirebaseFirestoreException && error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                Log.w(TAG, "Event ${event.id} rejected by the server, dropping it", error)
+            } else if (error != null) {
+                Log.w(TAG, "Event upload failed, will retry", error)
+                break
+            }
             uploaded += event.id
         }
         if (uploaded.isNotEmpty()) store.removeFromOutbox(uploaded)

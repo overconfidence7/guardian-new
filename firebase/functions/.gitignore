@@ -1,4 +1,5 @@
-lib/
-node_modules/
+/lib/
+/node_modules/
 *.local
 .env
+*-debug.log

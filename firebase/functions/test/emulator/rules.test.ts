@@ -221,7 +221,7 @@ describe("devices", () => {
     await assertFails(updateDoc(doc(db(as("helper")), dev()), { parentName: "" }));
     await assertFails(updateDoc(doc(db(as("helper")), dev()), { deviceUid: "helper" }));
     await assertFails(updateDoc(doc(db(as("helper")), dev()), { fcmToken: "x" }));
-    await assertFails(updateDoc(doc(db(as("helper")), dev()), { checkInNotifiedFor: null, parentName: "Mom" }));
+    await assertFails(updateDoc(doc(db(as("helper")), dev()), { checkInNotifiedFor: "2026-10-16", parentName: "Mom" }));
   });
   it("the phone updates its reported fields", async () => {
     const phone = db(as("phone"));

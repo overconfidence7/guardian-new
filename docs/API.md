@@ -90,13 +90,37 @@ invites/{code}                        # top-level so a code can be looked up wit
 | `deleteDevice` | owner helper, or the phone itself | `{ familyId, deviceId }` | `{}` (deletes subcollections and storage) |
 | `deleteFamily` | owner | `{ familyId }` | `{}` |
 
-Errors use `HttpsError` codes: `unauthenticated`, `permission-denied`, `not-found`, `failed-precondition` (expired/used code, plan limit), `invalid-argument`.
+Errors use `HttpsError` codes: `unauthenticated`, `permission-denied`, `not-found`, `failed-precondition` (expired/used code, plan limit), `invalid-argument`, `resource-exhausted` (rate limited). `details.reason` narrows it: `bad-code`, `unknown-code`, `wrong-kind`, `used`, `expired`, `locked`, `plan-limit`, `last-helper`, `owner`, `already-active`, `rate-limited`.
+
+Notes on the implemented contract:
+- `expiresAt` is epoch milliseconds. Codes are accepted in any case, with spaces or dashes. Helper invites last 7 days.
+- A device code locks after 5 failed lookups of that code; unknown codes count against the caller (10/hour per uid, 30/hour per hashed IP, in the server-only `rateLimits/` collection).
+- `createFamily` and `addDevice` take an optional `timezone` (default `America/New_York`). Plan limits count active and pending helpers.
+- `removeHelper` also withdraws a pending request; a helper may remove themselves; if the phone removes the owner, ownership passes to the next member.
+- Approving a helper who gave a phone number adds them to each device config's `family` list.
+- Extra fields: `families.deviceUids` (rules use it to let the phone read members), `members.approvedAt`, `invites.failedAttempts` / `usedAt`, `events.expireAt` (90-day TTL, set by `onEventCreated`).
 
 ## Triggers
 
 - `onEventCreated` (events): looks up members, sends FCM to each member's `pushTokens` (URGENT and NOTICE per `notify`, never INFO), removes dead tokens, writes `deliveredTo`. Notification text comes from `firebase/functions/src/copy.ts` (helper-facing wording).
 - `onConfigWritten` (config/current): if `updatedBy.kind == "helper"`, writes a `changes` entry with a human summary of what changed and sends an FCM data message `{ type: "config" }` to the phone. If `kind == "device"` and a protection feature went from on to off, creates a `PROTECTION_CHANGED_BY_PARENT` event (source `server`). Always copies `checkIn` to the device doc.
 - `checkInSweep` (every 15 min): for each device with `checkIn.enabled`, if parent-local time is past the deadline, `lastHeartbeatAt` is before parent-local midnight, and `checkInNotifiedFor` isn't today: create `CHECK_IN_MISSED` (NOTICE). If `lastHeartbeatAt` is older than 24 h and `silentNotifiedAt` is older than that: create `CHECK_IN_MISSED` with `data.reason = "silent"` (URGENT).
+
+- `onPhotoCreated` (photos): sends `{ type: "photo" }` to the phone.
+
+## Event data keys
+
+Values are strings. Never a phone number, message or screen content.
+
+| Type | Keys |
+|---|---|
+| `LONG_UNKNOWN_CALL` | `minutes`, `ongoing` |
+| `PAUSE_*`, `REMOTE_ACCESS_*`, `CONTROL_APP_INSTALLED` | as emitted by `TripwireEngine.kt` (app label and category) |
+| `HELP_REQUESTED` | `note` |
+| `REMINDER_MISSED` | `title`, `time` |
+| `PROTECTION_CHANGED_BY_PARENT` | `feature` (a `Transparency.kt` key, `safeWord` or `all`), `enabled` |
+| `PERMISSION_MISSING` | `permission` (`usageAccess`, `overlay`, `callScreening`, `phoneState`, `notifications`, `exactAlarms`, `fullScreenIntent`, `battery`, `homeApp`, `contacts`) |
+| `CHECK_IN_MISSED` | `deadline`, `date`, or `reason: "silent"`; server-created only |
 
 ## FCM messages to the phone
 
