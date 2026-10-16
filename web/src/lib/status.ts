@@ -17,7 +17,10 @@ export function deviceHealth(device: Device, now: number = Date.now()): DeviceHe
   const status = device.status;
   const last = status?.lastHeartbeatAt ?? status?.lastSeenAt ?? null;
   const missing = status?.missing ?? [];
-  if (missing.length > 0 || status?.protected === false) {
+  if (!status || status.protected === null) {
+    return { kind: 'quiet', label: 'Finishing setup', detail: 'The phone is connected. Protection starts once each feature is switched on there.' };
+  }
+  if (missing.length > 0 || status.protected === false) {
     const items = missing.map(missingSetting);
     const unique = items.filter((it, i) => items.findIndex((o) => o.short === it.short) === i);
     return {

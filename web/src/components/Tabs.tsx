@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Icon, type IconName } from './Icon';
 
@@ -17,6 +17,15 @@ export interface TabItem {
 export function Tabs({ items, current, label, idBase = 'tab' }: { items: TabItem[]; current: string; label: string; idBase?: string }) {
   const navigate = useNavigate();
   const refs = useRef<(HTMLAnchorElement | null)[]>([]);
+
+  // Keep the selected tab visible in the scrolling strip on small screens.
+  useEffect(() => {
+    const i = items.findIndex((t) => t.id === current);
+    const el = refs.current[i];
+    const strip = el?.parentElement;
+    if (!el || !strip || strip.scrollWidth <= strip.clientWidth) return;
+    strip.scrollTo({ left: el.offsetLeft - strip.clientWidth / 2 + el.offsetWidth / 2, behavior: 'smooth' });
+  }, [current, items]);
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const index = items.findIndex((t) => t.id === current);

@@ -49,6 +49,7 @@ export default defineConfig({
   preview: { port: 4173, strictPort: true },
   build: {
     sourcemap: true,
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id: string) {

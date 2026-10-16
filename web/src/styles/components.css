@@ -86,7 +86,8 @@
 }
 .card-padded { padding: var(--s-5); }
 @media (min-width: 720px) { .card-padded { padding: var(--s-6); } }
-.card-header { display: flex; align-items: flex-start; gap: var(--s-4); margin-bottom: var(--s-4); }
+.card-header { margin-bottom: var(--s-4); }
+.card-header-row { display: flex; align-items: center; gap: var(--s-4); min-height: 40px; }
 .card-title { font-size: var(--text-lg); font-weight: 680; }
 .card-description { color: var(--text-2); margin-top: var(--s-1); font-size: var(--text-md); }
 .card-action { flex: none; }

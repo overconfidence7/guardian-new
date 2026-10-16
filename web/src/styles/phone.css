@@ -52,12 +52,12 @@
 .ph-battery { width: 20px; height: 10px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; }
 .ph-battery::after { content: ''; position: absolute; inset: 1.5px 5px 1.5px 1.5px; background: currentColor; border-radius: 1px; }
 
-.ph-scroll { flex: 1; overflow: hidden; padding: 6px 14px 14px; display: flex; flex-direction: column; gap: 10px; mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent); }
+.ph-scroll { flex: 1; overflow-y: auto; scrollbar-width: none; overscroll-behavior: contain; padding: 6px 14px 14px; display: flex; flex-direction: column; gap: 10px; mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent); }
 .ph-clock { text-align: center; padding: 6px 0 2px; }
 .ph-time { font-size: calc(38px * min(var(--fs), 1.6) / 1.3); font-weight: 650; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
 .ph-date { font-size: calc(12px * var(--fs) / 1.3 * 1.15); color: var(--ph-sub); margin-top: 4px; font-weight: 550; }
 
-.ph-photo { position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 10; background: var(--ph-card); flex: none; border: 1px solid var(--ph-line); }
+.ph-photo { position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 9; background: var(--ph-card); flex: none; border: 1px solid var(--ph-line); }
 .ph-photo img { width: 100%; height: 100%; object-fit: cover; }
 .ph-photo-empty { width: 100%; height: 100%; display: grid; place-items: center; color: var(--ph-sub); }
 .ph-photo-caption { position: absolute; inset: auto 0 0 0; padding: 22px 12px 9px; background: linear-gradient(to top, rgb(0 0 0 / 0.62), transparent); color: #fff; display: flex; flex-direction: column; font-size: calc(10.5px * var(--fs) / 1.3 * 1.1); line-height: 1.25; }
@@ -105,3 +105,5 @@
 .ph-chip { align-self: center; display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--ph-card); border: 1px solid var(--ph-line); font-size: calc(10px * var(--fs) / 1.3 * 1.1); font-weight: 650; color: var(--ph-text); }
 .ph-all-apps { align-self: stretch; text-align: center; padding: 10px; border-radius: 14px; border: 1.5px solid var(--ph-line); font-weight: 700; font-size: calc(11px * var(--fs) / 1.3 * 1.1); }
 .ph-home-bar { position: absolute; bottom: 7px; left: 50%; width: 96px; height: 4px; margin-left: -48px; border-radius: 4px; background: var(--ph-text); opacity: 0.55; }
+
+.ph-scroll::-webkit-scrollbar { display: none; }

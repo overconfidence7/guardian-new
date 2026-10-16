@@ -4,7 +4,8 @@
  * editor, the display settings and the landing page.
  */
 import type { CSSProperties } from 'react';
-import type { DeviceConfig, HomeTile, InstalledApp, TileKind } from '../lib/model';
+import type { DeviceConfig, HomeTile, TileKind } from '../lib/model';
+import type { InstalledApp } from '../lib/types';
 import { callablePeople, tileLabel } from '../lib/tiles';
 import { formatHHmm } from '../lib/time';
 import { Avatar } from './Avatar';

@@ -26,6 +26,11 @@ export default tseslint.config(
     },
   },
   {
+    // Context providers export their hook next to the component on purpose.
+    files: ['src/data/DataProvider.tsx', 'src/components/Toast.tsx', 'src/screens/device/ConfigEditor.tsx'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
     files: ['e2e/**/*.ts', 'scripts/**/*.mjs', '*.config.{js,ts}'],
     languageOptions: { globals: { ...globals.node } },
   },

@@ -7,29 +7,12 @@ import { Checkbox, Field, Input, RadioCards, Textarea } from '../../components/F
 import { Icon } from '../../components/Icon';
 import { newId } from '../../lib/ids';
 import type { Reminder, ReminderKind } from '../../lib/model';
-import { DAY_NAMES, describeDays, formatHHmm } from '../../lib/time';
+import { DAY_NAMES, describeDays } from '../../lib/time';
+import { describeSchedule, toggleDay } from '../../lib/reminders';
 import type { Device } from '../../lib/types';
 import { useConfigEditor } from './ConfigEditor';
 
 const KIND_ICON = { MEDICATION: 'pill', APPOINTMENT: 'calendar', OTHER: 'bell' } as const;
-
-/** Toggle one ISO day; empty means every day, and at least one day stays selected. */
-export function toggleDay(days: number[], day: number): number[] {
-  const current = days.length === 0 ? [1, 2, 3, 4, 5, 6, 7] : days;
-  const next = current.includes(day) ? current.filter((d) => d !== day) : [...current, day].sort((a, b) => a - b);
-  if (next.length === 0) return current;
-  return next.length === 7 ? [] : next;
-}
-
-export function describeSchedule(r: Reminder): string {
-  const times = r.times.length ? r.times.map(formatHHmm).join(', ') : 'No time set';
-  if (r.date) {
-    const d = new Date(`${r.date}T12:00:00`);
-    const day = Number.isNaN(d.getTime()) ? r.date : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    return `${day} at ${times}`;
-  }
-  return `${describeDays(r.daysOfWeek)} at ${times}`;
-}
 
 function ReminderDialog({ initial, parent, onClose, onSave }: { initial: Reminder; parent: string; onClose: () => void; onSave: (r: Reminder) => void }) {
   const [r, setR] = useState<Reminder>(initial);

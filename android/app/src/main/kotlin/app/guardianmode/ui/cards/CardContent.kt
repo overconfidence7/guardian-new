@@ -238,8 +238,9 @@ fun SafeWordCard(config: DeviceConfig, actions: CardActions) {
 @Composable
 fun ReminderCard(request: CardRequest, actions: CardActions) {
     val ink = MaterialTheme.colorScheme.onPrimaryContainer
-    val time = remember(request.reminderAt) {
-        Instant.ofEpochMilli(request.reminderAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", LocalConfiguration.current.locales[0]))
+    val locale = LocalConfiguration.current.locales[0]
+    val time = remember(request.reminderAt, locale) {
+        Instant.ofEpochMilli(request.reminderAt).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", locale))
     }
     CardFrame(Icons.Rounded.Alarm, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer) {
         Text(time, style = MaterialTheme.typography.titleLarge, color = ink)

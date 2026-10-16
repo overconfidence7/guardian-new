@@ -1,5 +1,6 @@
 /** Pure helpers behind the home-screen tile editor. */
-import type { DeviceConfig, HomeTile, InstalledApp, TileKind } from './model';
+import type { DeviceConfig, HomeTile, TileKind } from './model';
+import type { InstalledApp } from './types';
 import { newId } from './ids';
 
 export const TILE_KIND_INFO: Record<TileKind, { label: string; description: string; needsTarget: boolean }> = {

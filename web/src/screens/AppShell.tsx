@@ -95,7 +95,7 @@ export function AppShell() {
       {api.mode === 'demo' ? (
         <div className="demo-banner" role="note">
           <span>
-            <strong>Demo</strong> · Sample family, nothing is saved.
+            <strong>Demo</strong> · sample family, nothing is saved
           </span>
           <Link to="/">Start for real</Link>
         </div>

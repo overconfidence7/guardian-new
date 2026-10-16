@@ -22,13 +22,12 @@ function Feature({ icon, title, intro, shares, never, on, children, id }: { icon
         <span className="feature-icon" aria-hidden="true">
           <Icon name={icon} size={24} />
         </span>
-        <div className="grow">
-          <h2 id={id} className="card-title">
-            {title}
-          </h2>
-          <p className="muted">{intro}</p>
-        </div>
+        <h2 id={id} className="card-title grow">
+          {title}
+        </h2>
+        <span className={['badge', on ? 'badge-ok' : ''].join(' ')}>{on ? 'On' : 'Off'}</span>
       </div>
+      <p className="muted feature-intro">{intro}</p>
       <div className="feature-body">{children}</div>
       <dl className="feature-privacy">
         <div>
@@ -125,7 +124,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
   const paths = usePaths();
   const [showWord, setShowWord] = useState(false);
   const [addingApp, setAddingApp] = useState(false);
-  const zones = useMemo(timezones, []);
+  const zones = useMemo(() => timezones(), []);
   if (loading || !config) return <Spinner />;
 
   const p = config.protection;

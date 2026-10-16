@@ -7,7 +7,7 @@ import { newId } from '../lib/ids';
 import { defaultDeviceConfig, type DeviceConfig } from '../lib/model';
 import type { Device, EventDoc, Invite } from '../lib/types';
 import type { AppUser, AuthApi, DataApi, Listener, Unsubscribe } from './api';
-import { buildDemoState, DEMO_FAMILY_ID, DEMO_USER, type DemoState } from './demoFixtures';
+import { buildDemoState, DEMO_FAMILY_ID, DEMO_MOM, DEMO_USER, type DemoState } from './demoFixtures';
 
 type Watcher = () => void;
 
@@ -250,6 +250,15 @@ export function createDemoApi(options: { now?: number; latencyMs?: number } = {}
       commit({ ...state, families });
     },
   };
+
+  // Demo only: a number for the "Call Mom" buttons (normally each helper saves it locally).
+  if (typeof window !== 'undefined') {
+    try {
+      if (!localStorage.getItem(`gm.parentPhone.${DEMO_MOM}`)) localStorage.setItem(`gm.parentPhone.${DEMO_MOM}`, '+1 555 010 0000');
+    } catch {
+      /* ignore */
+    }
+  }
 
   // Exposed for screenshots and manual demos: window.__demo.addEvent(...)
   if (typeof window !== 'undefined') {

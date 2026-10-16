@@ -8,6 +8,7 @@ import { Button, ButtonLink } from '../components/Button';
 import { Notice, Spinner } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { formatCode } from '../lib/ids';
+import { formatCountdown } from '../lib/time';
 import type { Invite } from '../lib/types';
 
 function QR({ value, label }: { value: string; label: string }) {
@@ -23,13 +24,6 @@ function QR({ value, label }: { value: string; label: string }) {
     };
   }, [value]);
   return <div className="qr" role="img" aria-label={label} dangerouslySetInnerHTML={svg ? { __html: svg } : undefined} />;
-}
-
-export function formatCountdown(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 const STEPS = (parent: string) => [

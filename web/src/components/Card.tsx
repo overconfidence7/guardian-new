@@ -8,17 +8,18 @@ export function Card({ as: Tag = 'section', className, children, padded = true, 
   );
 }
 
+/** Title with an optional action on the same row; the description runs full width below. */
 export function CardHeader({ title, description, action, id, level = 2 }: { title: ReactNode; description?: ReactNode; action?: ReactNode; id?: string; level?: 2 | 3 }) {
   const H = level === 2 ? 'h2' : 'h3';
   return (
     <header className="card-header">
-      <div className="grow">
-        <H id={id} className="card-title">
+      <div className="card-header-row">
+        <H id={id} className="card-title grow">
           {title}
         </H>
-        {description ? <p className="card-description">{description}</p> : null}
+        {action ? <div className="card-action">{action}</div> : null}
       </div>
-      {action ? <div className="card-action">{action}</div> : null}
+      {description ? <p className="card-description">{description}</p> : null}
     </header>
   );
 }

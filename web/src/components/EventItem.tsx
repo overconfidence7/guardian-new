@@ -17,7 +17,10 @@ export function EventItem({ event, parentName, now, compact = false, familyId, d
       </span>
       <div className="event-main">
         <div className="event-top">
-          <h3 className="event-title">{text.title}</h3>
+          <h3 className="event-title">
+            {text.title}
+            {!compact && event.severity === 'URGENT' ? <span className="badge badge-urgent event-sev">{SEVERITY_LABEL.URGENT}</span> : null}
+          </h3>
           <time className="event-time" dateTime={new Date(event.at).toISOString()} title={new Date(event.at).toLocaleString()}>
             {compact ? relativeTime(event.at, now) : formatTimeOfDay(event.at)}
           </time>
@@ -29,7 +32,6 @@ export function EventItem({ event, parentName, now, compact = false, familyId, d
             <img src={shot} alt={`Screenshot ${parentName} sent`} loading="lazy" />
           </a>
         ) : null}
-        {!compact && event.severity === 'URGENT' ? <span className="badge badge-urgent event-sev">{SEVERITY_LABEL.URGENT}</span> : null}
       </div>
     </article>
   );

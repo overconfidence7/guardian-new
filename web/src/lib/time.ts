@@ -71,3 +71,11 @@ export function describeDays(days: number[]): string {
   if (set.join() === '6,7') return 'Weekends';
   return set.map((d) => DAY_NAMES[d - 1]).join(', ');
 }
+
+/** Milliseconds left -> "14:59". */
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}

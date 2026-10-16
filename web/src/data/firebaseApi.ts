@@ -14,6 +14,7 @@ import {
   signInWithRedirect,
   signOut,
   type Auth,
+  type User,
 } from 'firebase/auth';
 import {
   arrayRemove,
@@ -48,7 +49,7 @@ import { newId } from '../lib/ids';
 import { stripUndefined, threeWayMerge } from '../lib/merge';
 import { parseDeviceConfig, type DeviceConfig, type EventType, type Severity } from '../lib/model';
 import type { ChangeDoc, ConfigDoc, Device, EventDoc, Family, Invite, Member, PhotoDoc } from '../lib/types';
-import type { AppUser, AuthApi, DataApi, ErrorListener, Listener } from './api';
+import type { AppUser, AuthApi, DataApi, ErrorListener } from './api';
 
 const EMAIL_KEY = 'gm.emailForSignIn';
 const SNAP: SnapshotOptions = { serverTimestamps: 'estimate' };
@@ -138,7 +139,7 @@ function toDevice(s: DocumentSnapshot<DocumentData>): Device | null {
     appVersion: str(d.appVersion),
     status: d.status
       ? {
-          protected: d.status.protected === true,
+          protected: typeof d.status.protected === 'boolean' ? d.status.protected : null,
           missing: strArr(d.status.missing),
           lastHeartbeatAt: millis(d.status.lastHeartbeatAt),
           lastSeenAt: millis(d.status.lastSeenAt),
@@ -214,7 +215,7 @@ const err = (onError?: ErrorListener) => (e: Error) => {
 
 /* ---------- auth ---------- */
 
-function toUser(u: import('firebase/auth').User): AppUser {
+function toUser(u: User): AppUser {
   return {
     uid: u.uid,
     displayName: u.displayName || (u.email ? u.email.split('@')[0]! : 'Helper'),

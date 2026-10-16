@@ -199,7 +199,7 @@ export function HomeScreenTab({ familyId, device }: { familyId: string; device: 
                     )}
                     <div className="grow">
                       <div className="tile-row-label">{tile.kind === 'CALL_CONTACT' ? `Call ${tileLabel(tile, config, device.installedApps)}` : tileLabel(tile, config, device.installedApps)}</div>
-                      <div className={problem ? 'tile-row-problem' : 'tile-row-kind'}>{problem ?? TILE_KIND_INFO[tile.kind].label}</div>
+                      <div className={problem ? 'tile-row-problem' : 'tile-row-kind'}>{problem ?? (tile.kind === 'APP' || tile.kind === 'CALL_CONTACT' || tileLabel(tile, config, device.installedApps) !== TILE_KIND_INFO[tile.kind].label ? TILE_KIND_INFO[tile.kind].label : TILE_KIND_INFO[tile.kind].description)}</div>
                     </div>
                     <IconButton icon="edit" size="sm" label={`Edit ${tileLabel(tile, config, device.installedApps)}`} onClick={() => setDialog({ tile })} />
                     <IconButton icon="trash" size="sm" variant="danger" label={`Remove ${tileLabel(tile, config, device.installedApps)}`} onClick={() => update((c) => void (c.home.tiles = removeById(c.home.tiles, tile.id)))} />
@@ -242,7 +242,7 @@ export function HomeScreenTab({ familyId, device }: { familyId: string; device: 
       <aside className="split-side desktop-only" aria-label="Live preview">
         <div className="sticky-preview">
           <p className="preview-caption">
-            <Icon name="eye" size={18} /> Live preview
+            <Icon name="eye" size={18} /> Live preview · scroll to see more
           </p>
           {preview}
         </div>

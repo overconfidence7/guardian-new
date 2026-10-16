@@ -37,7 +37,8 @@ export interface InstalledApp {
 }
 
 export interface DeviceStatus {
-  protected: boolean;
+  /** null until the phone first reports. */
+  protected: boolean | null;
   missing: string[];
   lastHeartbeatAt: Millis | null;
   lastSeenAt: Millis | null;

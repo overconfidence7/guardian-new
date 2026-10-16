@@ -26,7 +26,7 @@ export function DeviceCard({ familyId, device, now }: { familyId: string; device
   const urgentCount = recent.filter((e) => e.severity === 'URGENT' && now - e.at < 24 * 3600_000).length;
 
   return (
-    <article className={`device-card health-${health.kind}`} aria-labelledby={`dc-${device.id}`}>
+    <article className={`device-card dc-${health.kind}`} aria-labelledby={`dc-${device.id}`}>
       <div className="device-card-head">
         <Avatar name={device.parentName} size={56} />
         <div className="grow">
