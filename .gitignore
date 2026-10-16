@@ -1,0 +1,27 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+*.jks
+!android/app/debug.keystore
+google-services.json
+
+# Node
+node_modules/
+dist/
+.firebase/
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+.env
+.env.local
+
+# OS
+.DS_Store

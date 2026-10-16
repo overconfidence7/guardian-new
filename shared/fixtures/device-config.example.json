@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "revision": 42,
+  "parentName": "Margaret",
+  "family": [
+    { "id": "fam_sarah", "name": "Sarah", "relation": "Daughter", "phone": "+1 555 010 1111", "photoUrl": null, "isPrimaryHelper": true },
+    { "id": "fam_david", "name": "David", "relation": "Son", "phone": "+1 555 010 2222", "isPrimaryHelper": false }
+  ],
+  "contacts": [
+    { "id": "c_patel", "name": "Dr. Patel", "phone": "+1 555 010 3333", "note": "Family doctor" },
+    { "id": "c_june", "name": "June next door", "phone": "+1 555 010 4444" }
+  ],
+  "home": {
+    "showPhotoCard": true,
+    "columns": 2,
+    "tiles": [
+      { "id": "t1", "kind": "CALL_CONTACT", "target": "fam_sarah", "label": "Sarah" },
+      { "id": "t2", "kind": "CALL_CONTACT", "target": "fam_david", "label": "David" },
+      { "id": "t3", "kind": "PHONE", "label": "Phone" },
+      { "id": "t4", "kind": "MESSAGES", "label": "Messages" },
+      { "id": "t5", "kind": "CAMERA", "label": "Camera" },
+      { "id": "t6", "kind": "PHOTOS", "label": "Photos" },
+      { "id": "t7", "kind": "APP", "target": "com.whatsapp", "label": "WhatsApp" },
+      { "id": "t8", "kind": "REMINDERS", "label": "Reminders" }
+    ]
+  },
+  "display": { "fontScale": 1.4, "highContrast": false, "theme": "LIGHT" },
+  "allowedApps": ["com.whatsapp", "com.google.android.youtube", "com.facebook.katana"],
+  "protection": {
+    "pauseTripwires": {
+      "enabled": true,
+      "windowMinutes": 30,
+      "categories": ["PAYMENT", "GIFT_CARD", "CRYPTO", "BANK"],
+      "extraPackages": { "org.example.creditunion": "BANK" }
+    },
+    "remoteAccessAlarm": { "enabled": true, "trustedPackages": [], "warnOnControlCapableInstalls": true },
+    "callScreening": {
+      "mode": "SILENCE_UNKNOWN",
+      "allowRepeatCallers": true,
+      "allowlist": [
+        { "label": "CVS Pharmacy", "number": "+1 555 010 5555" },
+        { "label": "St. Mark's office", "number": "+1 555 010 6666" }
+      ]
+    },
+    "longCallAlert": { "enabled": true, "minutes": 20 },
+    "safeWord": { "enabled": true, "word": "bluebird" }
+  },
+  "checkIn": { "enabled": true, "deadline": "11:00", "timezone": "America/Chicago" },
+  "reminders": [
+    { "id": "r1", "title": "Blood pressure pill", "detail": "One white tablet with water", "kind": "MEDICATION", "times": ["08:00", "20:00"], "daysOfWeek": [], "notifyFamilyIfMissed": true },
+    { "id": "r2", "title": "Dr. Patel checkup", "detail": "Bring your pill list", "kind": "APPOINTMENT", "times": ["14:30"], "date": "2026-11-03" }
+  ]
+}
