@@ -1,0 +1,107 @@
+/* Phone-frame preview of the parent's home screen. Sizes in px: it is a picture of a phone. */
+.phone { margin: 0; display: flex; justify-content: center; }
+.phone-frame {
+  width: 300px;
+  max-width: 100%;
+  aspect-ratio: 9 / 18.5;
+  padding: 10px;
+  border-radius: 46px;
+  background: var(--phone-frame);
+  box-shadow: 0 0 0 1.5px #3a4441 inset, var(--shadow-3);
+  position: relative;
+}
+.phone-compact .phone-frame { width: 260px; }
+.phone-frame::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: #0b0f0e;
+  z-index: 2;
+  box-shadow: 0 0 0 2px #1a2220;
+}
+.phone-screen {
+  --ph-bg: #f6f2ea;
+  --ph-card: #ffffff;
+  --ph-text: #18201d;
+  --ph-sub: #4a5551;
+  --ph-line: #e7e1d6;
+  --ph-brand: #1f5f57;
+  height: 100%;
+  border-radius: 37px;
+  background: var(--ph-bg);
+  color: var(--ph-text);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  font-family: 'Figtree Variable', system-ui, sans-serif;
+  container-type: inline-size;
+}
+.phone-screen.is-dark { --ph-bg: #101513; --ph-card: #1c2422; --ph-text: #f1f4f2; --ph-sub: #b7c2bd; --ph-line: #2c3734; --ph-brand: #86d3c3; }
+.phone-screen.is-contrast { --ph-bg: #ffffff; --ph-card: #ffffff; --ph-text: #000000; --ph-sub: #000000; --ph-line: #000000; --ph-brand: #003d36; }
+.phone-screen.is-contrast.is-dark { --ph-bg: #000000; --ph-card: #000000; --ph-text: #ffffff; --ph-sub: #ffffff; --ph-line: #ffffff; --ph-brand: #9ff0df; }
+
+.ph-status { display: flex; justify-content: space-between; align-items: center; padding: 12px 22px 0; font-size: 11px; font-weight: 700; color: var(--ph-text); height: 30px; flex: none; }
+.ph-status-icons { display: flex; gap: 5px; align-items: center; }
+.ph-signal { width: 14px; height: 9px; background: linear-gradient(to right, currentColor 0 2.5px, transparent 2.5px 3.8px, currentColor 3.8px 6.3px, transparent 6.3px 7.6px, currentColor 7.6px 10.1px, transparent 10.1px 11.4px, currentColor 11.4px); clip-path: polygon(0 100%, 100% 0, 100% 100%); }
+.ph-battery { width: 20px; height: 10px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; }
+.ph-battery::after { content: ''; position: absolute; inset: 1.5px 5px 1.5px 1.5px; background: currentColor; border-radius: 1px; }
+
+.ph-scroll { flex: 1; overflow: hidden; padding: 6px 14px 14px; display: flex; flex-direction: column; gap: 10px; mask-image: linear-gradient(to bottom, #000 calc(100% - 30px), transparent); }
+.ph-clock { text-align: center; padding: 6px 0 2px; }
+.ph-time { font-size: calc(38px * min(var(--fs), 1.6) / 1.3); font-weight: 650; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.ph-date { font-size: calc(12px * var(--fs) / 1.3 * 1.15); color: var(--ph-sub); margin-top: 4px; font-weight: 550; }
+
+.ph-photo { position: relative; border-radius: 18px; overflow: hidden; aspect-ratio: 16 / 10; background: var(--ph-card); flex: none; border: 1px solid var(--ph-line); }
+.ph-photo img { width: 100%; height: 100%; object-fit: cover; }
+.ph-photo-empty { width: 100%; height: 100%; display: grid; place-items: center; color: var(--ph-sub); }
+.ph-photo-caption { position: absolute; inset: auto 0 0 0; padding: 22px 12px 9px; background: linear-gradient(to top, rgb(0 0 0 / 0.62), transparent); color: #fff; display: flex; flex-direction: column; font-size: calc(10.5px * var(--fs) / 1.3 * 1.1); line-height: 1.25; }
+.ph-photo-caption strong { font-size: 1.1em; }
+
+.ph-reminder { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-radius: 14px; background: color-mix(in srgb, var(--ph-brand) 12%, var(--ph-card)); color: var(--ph-text); font-size: calc(11px * var(--fs) / 1.3 * 1.1); flex: none; }
+.ph-reminder svg { color: var(--ph-brand); flex: none; }
+.phone-screen.is-contrast .ph-reminder { border: 2px solid var(--ph-line); }
+
+.ph-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 9px; }
+.ph-tiles-empty { grid-column: 1 / -1; text-align: center; color: var(--ph-sub); font-size: 12px; padding: 18px 0; border: 1.5px dashed var(--ph-line); border-radius: 16px; }
+.ph-tile {
+  --tile-bg: var(--ph-card);
+  --tile-ink: var(--ph-brand);
+  background: var(--tile-bg);
+  border-radius: 18px;
+  border: 1px solid var(--ph-line);
+  min-height: 86px;
+  padding: 10px 6px 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  transition: box-shadow 200ms var(--ease), transform 200ms var(--ease);
+}
+.ph-tile.is-highlight { box-shadow: 0 0 0 3px var(--focus); transform: scale(1.03); }
+.phone-screen.is-contrast .ph-tile { border-width: 2.5px; }
+.ph-tile.is-person { --tile-bg: color-mix(in srgb, var(--ph-brand) 9%, var(--ph-card)); }
+.ph-tile-label { font-size: calc(11px * var(--fs)); font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; max-width: 100%; }
+.ph-tile-icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in srgb, var(--tile-ink) 14%, transparent); color: var(--tile-ink); }
+.ph-app-icon { font-weight: 800; font-size: 20px; }
+.ph-tile-photo .avatar { box-shadow: 0 0 0 3px var(--ph-card); }
+.tone-green { --tile-ink: #2c7a4b; }
+.tone-blue { --tile-ink: #2f62b0; }
+.tone-plum { --tile-ink: #7a3f8f; }
+.tone-amber { --tile-ink: #a3620e; }
+.tone-rose { --tile-ink: #b0405a; }
+.tone-teal { --tile-ink: #1f6f66; }
+.tone-slate { --tile-ink: #4a5a66; }
+.phone-screen.is-dark .ph-tile { --tile-ink: #9fd8cb; }
+.phone-screen.is-contrast .ph-tile { --tile-ink: var(--ph-text); }
+
+.ph-chip { align-self: center; display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px 6px 8px; border-radius: 999px; background: var(--ph-card); border: 1px solid var(--ph-line); font-size: calc(10px * var(--fs) / 1.3 * 1.1); font-weight: 650; color: var(--ph-text); }
+.ph-all-apps { align-self: stretch; text-align: center; padding: 10px; border-radius: 14px; border: 1.5px solid var(--ph-line); font-weight: 700; font-size: calc(11px * var(--fs) / 1.3 * 1.1); }
+.ph-home-bar { position: absolute; bottom: 7px; left: 50%; width: 96px; height: 4px; margin-left: -48px; border-radius: 4px; background: var(--ph-text); opacity: 0.55; }
