@@ -25,6 +25,7 @@ families/{familyId}/members/{uid}
   phone: string                        # used to build FamilyContact entries
   pushTokens: string[]                 # web/Android FCM tokens for this helper
   notify: { urgent: "push", notice: "push" | "off" }
+  status: "pending" | "active"         # helpers other than the creator wait for the parent's approval on the phone
   joinedAt: timestamp
 
 families/{familyId}/devices/{deviceId}
@@ -79,11 +80,12 @@ invites/{code}                        # top-level so a code can be looked up wit
 |---|---|---|---|
 | `createFamily` | helper | `{ familyName, parentName, helperPhone? }` | `{ familyId, deviceId }` (creates owner member, device with default config) |
 | `addDevice` | helper | `{ familyId, parentName }` | `{ deviceId }` (max 2 devices on the family plan, 1 on free) |
-| `createDeviceInvite` | helper | `{ familyId, deviceId }` | `{ code, expiresAt }` (6 chars from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, 24 h) |
+| `createDeviceInvite` | helper | `{ familyId, deviceId }` | `{ code, expiresAt }` (6 chars from `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, 15 min, single use; 5 failed lookups lock it) |
 | `previewInvite` | phone | `{ code }` | `{ kind, familyName, parentName, helperName }` |
 | `claimDeviceInvite` | phone | `{ code, model, androidVersion, appVersion }` | `{ familyId, deviceId }` (sets `deviceUid`; replaces a previous phone) |
 | `createHelperInvite` | helper | `{ familyId }` | `{ code, expiresAt }` (max 4 helpers on the family plan, 1 on free) |
-| `acceptHelperInvite` | helper | `{ code, displayName, phone? }` | `{ familyId }` |
+| `acceptHelperInvite` | helper | `{ code, displayName, phone? }` | `{ familyId, status: "pending" }` (member doc created with `status: "pending"`; not in `memberUids` until the phone approves) |
+| `approveHelper` | the family's phone | `{ familyId, uid, approve: bool }` | `{}` (parent's on-phone decision; approve adds to `memberUids` and sets `status: "active"`, decline deletes the member) |
 | `removeHelper` | owner helper, or the family's phone | `{ familyId, uid }` | `{}` (the owner can't be removed by the phone if they're the only helper) |
 | `deleteDevice` | owner helper, or the phone itself | `{ familyId, deviceId }` | `{}` (deletes subcollections and storage) |
 | `deleteFamily` | owner | `{ familyId }` | `{}` |
