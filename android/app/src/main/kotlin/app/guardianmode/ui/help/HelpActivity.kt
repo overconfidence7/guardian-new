@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -177,7 +177,7 @@ class HelpActivity : ComponentActivity() {
                     )
                 }
                 Spacer(Modifier.height(24.dp))
-                BigButton("Send to $name", ::send, icon = Icons.Rounded.Send)
+                BigButton("Send to $name", ::send, icon = Icons.AutoMirrored.Rounded.Send)
                 Spacer(Modifier.height(12.dp))
                 BigButton("Don't send", ::discard, primary = false)
             }

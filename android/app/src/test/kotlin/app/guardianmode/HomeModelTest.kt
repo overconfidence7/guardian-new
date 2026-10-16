@@ -25,7 +25,7 @@ class HomeModelTest {
                 tiles = listOf(HomeTile("x", TileKind.CALL_CONTACT, "nobody"), HomeTile("y", TileKind.APP, "com.not.installed")),
             ),
         )
-        val ui = HomeModel.build(Fixtures.state.copy(config = config), now) { null }
+        val ui = HomeModel.build(Fixtures.state.copy(config = config), now, appLabel = { null })
         assertThat(ui.tiles).isEmpty()
     }
 
