@@ -4,6 +4,8 @@ import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import app.guardianmode.core.PhoneCallState
@@ -35,6 +37,9 @@ class ProtectionFlowTest {
                 Fixtures.state.copy(pairing = null, outbox = emptyList(), sharedEvents = emptyList(), pausedUntil = 0)
             }
         }
+        // The foreground watcher reports every app change; start each test from Guardian itself
+        // so a package left in front by an earlier test still counts as newly opened.
+        container.brain.onForeground(context.packageName, "Guardian Mode")
         device.pressHome()
     }
 
@@ -44,8 +49,10 @@ class ProtectionFlowTest {
 
     @Test fun homeScreenShowsFamilyTiles() {
         context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        assertThat(device.wait(Until.hasObject(By.desc("Call Sarah")), TIMEOUT)).isTrue()
-        assertThat(device.hasObject(By.text("All my apps"))).isTrue()
+        assertThat(device.wait(Until.hasObject(By.scrollable(true)), TIMEOUT)).isTrue()
+        // Tiles sit below the photo card, so they may only be laid out after scrolling.
+        assertThat(scrollTo(By.desc("Call Sarah"))).isTrue()
+        assertThat(scrollTo(By.text("All my apps"))).isTrue()
     }
 
     @Test fun bankAppAfterUnknownCallShowsPauseCard() {
@@ -82,6 +89,15 @@ class ProtectionFlowTest {
         container.brain.onInstalled("com.anydesk.anydeskandroid", "AnyDesk", controlCapable = true)
         assertThat(device.wait(Until.hasObject(By.textContains("AnyDesk can let someone control your phone")), TIMEOUT)).isTrue()
         device.findObject(By.text("I trust this app")).click()
+    }
+
+    private fun scrollTo(selector: BySelector): Boolean {
+        repeat(6) {
+            if (device.hasObject(selector)) return true
+            val list = device.findObject(By.scrollable(true)) ?: return false
+            list.scroll(Direction.DOWN, 0.7f)
+        }
+        return device.hasObject(selector)
     }
 
     private companion object {
