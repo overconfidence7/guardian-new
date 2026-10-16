@@ -58,7 +58,7 @@ jobs:
                       print("\n".join((bad.text or "").splitlines()[:40]))
           PY
           if [ -f app/build/reports/androidTests/logcat.txt ]; then
-            grep -E "AndroidRuntime|TestRunner|guardianmode|FATAL" app/build/reports/androidTests/logcat.txt | tail -150
+            grep -E "AndroidRuntime|TestRunner|UiDump|FATAL|GuardianBrain|CardLauncher" app/build/reports/androidTests/logcat.txt | tail -150
           fi
       - uses: actions/upload-artifact@v4
         if: always()

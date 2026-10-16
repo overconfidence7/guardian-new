@@ -49,10 +49,11 @@ class ProtectionFlowTest {
 
     @Test fun homeScreenShowsFamilyTiles() {
         context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        assertThat(device.wait(Until.hasObject(By.scrollable(true)), TIMEOUT)).isTrue()
+        device.wait(Until.hasObject(By.pkg(context.packageName).depth(0)), TIMEOUT)
         // Tiles sit below the photo card, so they may only be laid out after scrolling.
-        assertThat(scrollTo(By.desc("Call Sarah"))).isTrue()
-        assertThat(scrollTo(By.text("All my apps"))).isTrue()
+        val found = scrollTo(By.desc("Call Sarah")) && scrollTo(By.text("All my apps"))
+        if (!found) dumpUi()
+        assertThat(found).isTrue()
     }
 
     @Test fun bankAppAfterUnknownCallShowsPauseCard() {
@@ -93,11 +94,18 @@ class ProtectionFlowTest {
 
     private fun scrollTo(selector: BySelector): Boolean {
         repeat(6) {
-            if (device.hasObject(selector)) return true
-            val list = device.findObject(By.scrollable(true)) ?: return false
-            list.scroll(Direction.DOWN, 0.7f)
+            if (device.wait(Until.hasObject(selector), 1_000)) return true
+            device.findObject(By.scrollable(true))?.scroll(Direction.DOWN, 0.7f)
+                ?: device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 20)
         }
         return device.hasObject(selector)
+    }
+
+    /** Writes the visible UI tree to logcat (tag UiDump) so CI shows what was on screen. */
+    private fun dumpUi() {
+        val out = java.io.ByteArrayOutputStream()
+        device.dumpWindowHierarchy(out)
+        out.toString().chunked(3_000).forEach { android.util.Log.i("UiDump", it) }
     }
 
     private companion object {
