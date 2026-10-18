@@ -26,7 +26,7 @@ android/              Android app (Gradle), includes ../core
 web/                  Helper dashboard (Vite + React + TS), Vitest, Playwright e2e
 firebase/             firestore.rules, storage.rules, indexes, functions/ (TS) + tests
 shared/fixtures/      JSON contract fixtures used by Kotlin and TS tests
-docs/                 SPEC, POLICY, BUILD_PLAN, TESTING, RELEASE
+docs/                 SPEC, POLICY, SECURITY, BUILD_PLAN, API, TESTING, RELEASE
 .github/workflows/    CI pipelines (see §5)
 ```
 
@@ -79,8 +79,13 @@ Each milestone ends with: CI green, the acceptance checks below passing, and the
 - Motion and haptics review, copy review against the calm-voice rules, accessibility audit (TalkBack, Switch Access, 200% font), battery measurement (Battery Historian on a real device, < 2%/day), crash reporting (Firebase Crashlytics), privacy policy and terms, store listing, Data safety form, FGS declaration video, closed testing track.
 - Accept: release checklist in `docs/RELEASE.md` all ticked.
 
+### M9. Security hardening and Live help
+- App Check on all clients, helper 2FA, parent approval for new helpers and sensitive changes, new-device alerts, FLAG_SECURE screens, retention TTLs (`SECURITY.md` §2–4).
+- Live help: WebRTC screen view + voice + pointer overlay, approved on the phone every time with matching codes (`SECURITY.md` §5).
+- Accept: rules tests for every pending-approval path; e2e test of a live session between the dashboard and an emulator; external pen test before launch.
+
 ### Post-MVP
-Live screen share (WebRTC, approved each time), Stripe billing, credit-union partner codes, multi-language (Spanish first), wear/tablet layouts.
+Full remote control (Accessibility service, separate opt-in, after Play pre-review), Stripe billing, credit-union partner codes, multi-language (Spanish first), wear/tablet layouts.
 
 ## 4. What only Nate can provide
 

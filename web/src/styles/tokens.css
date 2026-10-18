@@ -1,0 +1,152 @@
+/*
+ * Design tokens. Warm, calm, premium: soft paper background, deep teal brand,
+ * generous spacing, large type. Every text/background pair meets WCAG AA.
+ */
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #f7f4ee;
+  --bg-tint: #f1ece2;
+  --surface: #ffffff;
+  --surface-2: #f8f6f1;
+  --surface-sunken: #efeae1;
+  --border: #e3ddd2;
+  --border-strong: #cfc7b9;
+
+  /* Text (contrast on --bg: 15.2, 8.0, 5.3) */
+  --text: #1b2522;
+  --text-2: #44514c;
+  --text-3: #5f6b66;
+  --text-on-brand: #ffffff;
+
+  /* Brand: deep teal-green */
+  --brand: #1f5f57;
+  --brand-hover: #184d46;
+  --brand-press: #133e38;
+  --brand-soft: #e2eeea;
+  --brand-softer: #eef5f2;
+  --brand-ink: #174a43;
+  --focus: #2f8a7d;
+
+  /* Status */
+  --ok: #2d6b47;
+  --ok-soft: #e3f0e6;
+  --notice: #7a5a12;
+  --notice-soft: #f7efd9;
+  --notice-line: #e2cf9c;
+  --urgent: #8f3f12;
+  --urgent-soft: #fbeee2;
+  --urgent-line: #ebc29d;
+  --urgent-dot: #c8692c;
+  --danger: #a3372a;
+  --danger-hover: #8a2c21;
+  --danger-soft: #f9e9e6;
+  --info-soft: #eef0f2;
+
+  /* Phone preview */
+  --phone-frame: #1c2321;
+  --phone-screen: #faf8f3;
+  --phone-text: #18201d;
+
+  /* Type */
+  --font-body: 'Figtree Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Fraunces Variable', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.8125rem;   /* 13 */
+  --text-sm: 0.9375rem;   /* 15 */
+  --text-md: 1.0625rem;   /* 17 */
+  --text-lg: 1.25rem;     /* 20 */
+  --text-xl: 1.5rem;      /* 24 */
+  --text-2xl: 1.875rem;   /* 30 */
+  --text-3xl: 2.375rem;   /* 38 */
+  --text-4xl: clamp(2.375rem, 5vw + 1rem, 3.5rem);
+
+  /* Space */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.25rem;
+  --s-6: 1.5rem;
+  --s-8: 2rem;
+  --s-10: 2.5rem;
+  --s-12: 3rem;
+  --s-16: 4rem;
+
+  /* Shape */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgb(40 33 20 / 0.05), 0 1px 1px rgb(40 33 20 / 0.03);
+  --shadow-2: 0 2px 6px rgb(40 33 20 / 0.06), 0 8px 24px rgb(40 33 20 / 0.06);
+  --shadow-3: 0 12px 40px rgb(30 25 15 / 0.16), 0 2px 8px rgb(30 25 15 / 0.08);
+
+  /* Layout */
+  --gutter: 16px;
+  --content: 1080px;
+  --tap: 48px;
+  --header-h: 64px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 180ms;
+}
+
+@media (min-width: 720px) {
+  :root {
+    --gutter: 32px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0f1513;
+    --bg-tint: #131b18;
+    --surface: #18201e;
+    --surface-2: #1d2624;
+    --surface-sunken: #121917;
+    --border: #2a3532;
+    --border-strong: #3a4743;
+
+    --text: #ecf1ee;
+    --text-2: #bcc7c2;
+    --text-3: #98a49f;
+    --text-on-brand: #0c1c19;
+
+    --brand: #7cc9b9;
+    --brand-hover: #95d6c8;
+    --brand-press: #a9e0d4;
+    --brand-soft: #1b322e;
+    --brand-softer: #172623;
+    --brand-ink: #9edccf;
+    --focus: #8fd8c8;
+
+    --ok: #8fd3a6;
+    --ok-soft: #17291f;
+    --notice: #e7c977;
+    --notice-soft: #262113;
+    --notice-line: #4d4120;
+    --urgent: #f2b98d;
+    --urgent-soft: #2d1d12;
+    --urgent-line: #5c3a20;
+    --urgent-dot: #e48a4d;
+    --danger: #f0a196;
+    --danger-hover: #f5b8af;
+    --danger-soft: #2f1a17;
+    --info-soft: #1d2426;
+
+    --phone-frame: #050807;
+    --phone-screen: #faf8f3;
+    --phone-text: #18201d;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 2px 8px rgb(0 0 0 / 0.35), 0 10px 30px rgb(0 0 0 / 0.25);
+    --shadow-3: 0 16px 48px rgb(0 0 0 / 0.55);
+  }
+}

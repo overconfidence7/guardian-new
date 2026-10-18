@@ -1,0 +1,48 @@
+rules_version = '2';
+
+// Contract: docs/API.md "Storage". Membership is read from Firestore.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function familyDoc(familyId) {
+      return firestore.get(/databases/(default)/documents/families/$(familyId));
+    }
+
+    function deviceDoc(familyId, deviceId) {
+      return firestore.get(/databases/(default)/documents/families/$(familyId)/devices/$(deviceId));
+    }
+
+    function isHelper(familyId) {
+      return request.auth != null && request.auth.uid in familyDoc(familyId).data.memberUids;
+    }
+
+    function isDevice(familyId, deviceId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/families/$(familyId)/devices/$(deviceId))
+        && deviceDoc(familyId, deviceId).data.deviceUid == request.auth.uid;
+    }
+
+    // Photos helpers send to the phone. The dashboard resizes to 1600 px before upload.
+    match /families/{familyId}/devices/{deviceId}/photos/{fileName} {
+      allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+      allow create, update: if fileName.matches('[A-Za-z0-9_-]{1,128}[.]jpg')
+                            && isHelper(familyId)
+                            && request.resource.size <= 10 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      allow delete: if isHelper(familyId);
+    }
+
+    // A screenshot the parent chose to send with "Help me".
+    match /families/{familyId}/devices/{deviceId}/help/{fileName} {
+      allow read: if isHelper(familyId);
+      allow create: if fileName.matches('[A-Za-z0-9_-]{1,128}[.]jpg')
+                    && isDevice(familyId, deviceId)
+                    && request.resource.size <= 5 * 1024 * 1024
+                    && request.resource.contentType == 'image/jpeg';
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

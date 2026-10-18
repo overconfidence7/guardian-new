@@ -27,7 +27,7 @@ Products that do ship family scam protection on Play today (Truecaller Family Pr
 
 ### Decision still open (owner: Nate, before the first Play submission)
 
-Whether to declare `isMonitoringTool="other"`. Recommendation: do **not** declare it (Guardian is a self-protection app with user-chosen alerts, like Truecaller Family Protection), keep every safeguard above anyway, and ask Play developer policy support for a pre-review with the build and a demo video before going to production. The build reads `guardian.isMonitoringTool` from `android/gradle.properties`, so flipping it is one line.
+Whether to declare `isMonitoringTool="other"`. Recommendation: do **not** declare it (Guardian is a self-protection app with user-chosen alerts, like Truecaller Family Protection), keep every safeguard above anyway, and ask Play developer policy support for a pre-review with the build and a demo video before going to production. Declaring it is a one-line `<meta-data>` addition in `android/app/src/main/AndroidManifest.xml`, where a comment marks the spot.
 
 ## 2. Permissions and APIs
 

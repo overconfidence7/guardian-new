@@ -1,0 +1,212 @@
+rules_version = '2';
+
+// Contract: docs/API.md "Rules summary". Functions use the Admin SDK and bypass these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function familyPath(familyId) {
+      return /databases/$(database)/documents/families/$(familyId);
+    }
+
+    function devicePath(familyId, deviceId) {
+      return /databases/$(database)/documents/families/$(familyId)/devices/$(deviceId);
+    }
+
+    // A helper: listed in the family's memberUids.
+    function isHelper(familyId) {
+      return signedIn() && request.auth.uid in get(familyPath(familyId)).data.memberUids;
+    }
+
+    // The paired phone of one device: its anonymous uid is the device's deviceUid.
+    function isDevice(familyId, deviceId) {
+      return signedIn()
+        && exists(devicePath(familyId, deviceId))
+        && get(devicePath(familyId, deviceId)).data.deviceUid == request.auth.uid;
+    }
+
+    // Any paired phone of the family (maintained by claimDeviceInvite / deleteDevice).
+    function isFamilyPhone(familyId) {
+      return signedIn()
+        && request.auth.uid in get(familyPath(familyId)).data.get('deviceUids', []);
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isShortString(value, max) {
+      return value is string && value.size() <= max;
+    }
+
+    // ---- Events ---------------------------------------------------------------------
+
+    function validEventType(t) {
+      // Mirrors EventType in core/Model.kt. CHECK_IN_MISSED is created by the server only.
+      return t in [
+        'LONG_UNKNOWN_CALL',
+        'PAUSE_SHOWN',
+        'PAUSE_CALLED_FAMILY',
+        'PAUSE_CONTINUED',
+        'REMOTE_ACCESS_INSTALLED',
+        'REMOTE_ACCESS_OPENED',
+        'CONTROL_APP_INSTALLED',
+        'HELP_REQUESTED',
+        'REMINDER_MISSED',
+        'PROTECTION_CHANGED_BY_PARENT',
+        'PERMISSION_MISSING'
+      ];
+    }
+
+    function validSeverity(s) {
+      return s in ['INFO', 'NOTICE', 'URGENT'];
+    }
+
+    // Rules have no loops, so each of the (at most 10) entries is checked by position.
+    function validDataEntry(keys, values, i) {
+      return i >= keys.size()
+        || (keys[i].size() <= 40 && values[i] is string && values[i].size() <= 200);
+    }
+
+    function validEventData(data) {
+      return data is map
+        && data.size() <= 10
+        && validDataEntry(data.keys(), data.values(), 0)
+        && validDataEntry(data.keys(), data.values(), 1)
+        && validDataEntry(data.keys(), data.values(), 2)
+        && validDataEntry(data.keys(), data.values(), 3)
+        && validDataEntry(data.keys(), data.values(), 4)
+        && validDataEntry(data.keys(), data.values(), 5)
+        && validDataEntry(data.keys(), data.values(), 6)
+        && validDataEntry(data.keys(), data.values(), 7)
+        && validDataEntry(data.keys(), data.values(), 8)
+        && validDataEntry(data.keys(), data.values(), 9);
+    }
+
+    function validDeviceEvent() {
+      let e = request.resource.data;
+      return e.keys().hasAll(['type', 'severity', 'at', 'createdAt', 'source'])
+        && e.keys().hasOnly(['type', 'severity', 'at', 'data', 'createdAt', 'source'])
+        && validEventType(e.type)
+        && validSeverity(e.severity)
+        && e.at is int
+        && e.createdAt == request.time
+        && e.source == 'device'
+        && (!('data' in e) || validEventData(e.data));
+    }
+
+    // ---- Config attribution -----------------------------------------------------------
+
+    function attributedTo(kind) {
+      let c = request.resource.data;
+      return c.updatedBy is map
+        && c.updatedBy.uid == request.auth.uid
+        && c.updatedBy.kind == kind
+        && isShortString(c.updatedBy.name, 80)
+        && c.updatedAt == request.time;
+    }
+
+    // ---- Device fields the phone may report -------------------------------------------
+
+    function validStatus(s) {
+      return s is map
+        && s.keys().hasOnly(['protected', 'missing', 'lastHeartbeatAt', 'lastSeenAt'])
+        && (!('protected' in s) || s.protected is bool)
+        && (!('missing' in s) || (s.missing is list && s.missing.size() <= 30))
+        && (!('lastHeartbeatAt' in s) || s.lastHeartbeatAt == null || s.lastHeartbeatAt is timestamp)
+        && (!('lastSeenAt' in s) || s.lastSeenAt == null || s.lastSeenAt is timestamp);
+    }
+
+    function validPhoneDeviceUpdate() {
+      let d = request.resource.data;
+      return changedKeys().hasOnly(['fcmToken', 'model', 'androidVersion', 'appVersion', 'status', 'installedApps', 'consent'])
+        && (d.fcmToken == null || isShortString(d.fcmToken, 4096))
+        && isShortString(d.model, 100)
+        && isShortString(d.androidVersion, 20)
+        && isShortString(d.appVersion, 40)
+        && validStatus(d.status)
+        && d.installedApps is list && d.installedApps.size() <= 500
+        && (d.consent == null || d.consent is map);
+    }
+
+    function validMemberSelfUpdate() {
+      let m = request.resource.data;
+      return changedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'phone', 'pushTokens', 'notify'])
+        && isShortString(m.displayName, 60) && m.displayName.size() > 0
+        && isShortString(m.email, 320)
+        && (m.photoUrl == null || isShortString(m.photoUrl, 2048))
+        && isShortString(m.phone, 32)
+        && m.pushTokens is list && m.pushTokens.size() <= 20
+        && m.notify is map
+        && m.notify.keys().hasOnly(['urgent', 'notice'])
+        && m.notify.urgent == 'push'
+        && m.notify.notice in ['push', 'off'];
+    }
+
+    // ---- Paths -------------------------------------------------------------------------
+
+    match /families/{familyId} {
+      allow read: if isHelper(familyId);
+
+      match /members/{uid} {
+        // The phone reads members to show helper names and pending "Allow David to help?"
+        // requests. A pending helper may read only their own doc, to see when they're approved.
+        allow read: if isHelper(familyId) || isFamilyPhone(familyId)
+                    || (signedIn() && request.auth.uid == uid);
+        allow update: if isHelper(familyId) && request.auth.uid == uid && validMemberSelfUpdate();
+      }
+
+      match /devices/{deviceId} {
+        allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+        allow update: if (isHelper(familyId)
+                            && changedKeys().hasOnly(['parentName'])
+                            && isShortString(request.resource.data.parentName, 60)
+                            && request.resource.data.parentName.size() > 0)
+                      || (isDevice(familyId, deviceId) && validPhoneDeviceUpdate());
+
+        match /config/{docId} {
+          allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+          // The parent owns the phone and may switch features off, so the phone writes too.
+          allow create, update: if docId == 'current'
+                                && ((isHelper(familyId) && attributedTo('helper'))
+                                    || (isDevice(familyId, deviceId) && attributedTo('device')));
+        }
+
+        match /events/{eventId} {
+          allow read: if isHelper(familyId);
+          allow create: if isDevice(familyId, deviceId) && validDeviceEvent();
+        }
+
+        match /photos/{photoId} {
+          allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+          allow create: if isHelper(familyId)
+                        && request.resource.data.fromUid == request.auth.uid
+                        && isShortString(request.resource.data.storagePath, 512)
+                        && request.resource.data.storagePath.matches('families/' + familyId + '/devices/' + deviceId + '/photos/[^/]+')
+                        && isShortString(request.resource.data.fromName, 80)
+                        && isShortString(request.resource.data.caption, 200)
+                        && request.resource.data.createdAt == request.time;
+          allow update: if isHelper(familyId)
+                        && changedKeys().hasOnly(['caption'])
+                        && isShortString(request.resource.data.caption, 200);
+          allow delete: if isHelper(familyId);
+        }
+
+        match /changes/{changeId} {
+          allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+        }
+      }
+    }
+
+    // Invite codes and lookup rate limits are only ever touched by functions.
+    match /invites/{code} {
+      allow read, write: if false;
+    }
+    match /rateLimits/{key} {
+      allow read, write: if false;
+    }
+  }
+}
