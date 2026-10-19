@@ -152,7 +152,7 @@ private fun whatTheyAskFor(category: AppCategory?) = when (category) {
 fun PauseCard(request: CardRequest, helper: FamilyContact?, actions: CardActions) {
     val ink = Guardian.colors.onPauseSurface
     CardFrame(Icons.Rounded.PanTool, ink, Guardian.colors.pauseSurface) {
-        Headline("Let's pause for a moment.", ink)
+        Headline("Hold on a minute.", ink)
         Spacer(Modifier.height(16.dp))
         Body("Did someone on the phone ask you to open ${request.appLabel}?", ink)
         Spacer(Modifier.height(20.dp))

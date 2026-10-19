@@ -34,7 +34,7 @@ object ConsentPages {
         ConsentPage(
             key = Features.CALLS,
             title = "Quiet unknown callers",
-            intro = "Calls from numbers you don't know won't ring out loud; they can leave a voicemail. Family, your contacts and numbers your family adds always ring. If you're on a very long call with a number you don't know, your family gets a gentle heads-up.",
+            intro = "Calls from numbers you don't know won't ring out loud. They can still leave a voicemail. Family, your contacts and any numbers your family adds always ring. If you're on a very long call with a number you don't know, your family gets a heads up.",
             familySees = "That a long call with an unknown number is happening.",
             neverShared = "Who called, their number, or what was said.",
             capabilities = listOf(Capability.CALL_SCREENING, Capability.PHONE_STATE, Capability.CONTACTS),
@@ -42,7 +42,7 @@ object ConsentPages {
         ConsentPage(
             key = Features.CHECK_IN,
             title = "A daily \"I'm OK\"",
-            intro = "Just by using your phone, you let your family know you're OK. If it hasn't been used by late morning, they get a gentle note. There's nothing to remember.",
+            intro = "Using your phone like normal lets your family know you're OK. If it hasn't been used by late morning, they get a note. You don't have to do anything.",
             familySees = "Whether your phone has been used today.",
             neverShared = "What you used it for or where you are.",
             capabilities = emptyList(),
@@ -58,7 +58,7 @@ object ConsentPages {
         ConsentPage(
             key = Features.BATTERY,
             title = "Keep Guardian awake",
-            intro = "Some phones put apps to sleep to save battery. Letting Guardian stay awake keeps your protection working. It uses very little battery.",
+            intro = "Some phones put apps to sleep to save battery. If Guardian is asleep, it can't warn you about anything. Keeping it awake uses very little battery.",
             familySees = "Nothing.",
             neverShared = "Nothing is shared by this.",
             capabilities = listOf(Capability.BATTERY),

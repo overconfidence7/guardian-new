@@ -79,7 +79,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
 
     GuardianPage("What my family can see", actions::onBack) {
         Text(
-            "Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can switch anything off.",
+            "Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -151,7 +151,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
 
         Section("Stop using Guardian Mode")
         Text(
-            "You can stop at any time. Your helpers will see that this phone has left the family.",
+            "You can stop whenever you want. Your helpers will see that this phone has left the family.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )

@@ -89,7 +89,7 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       const app = appOf(d);
       return {
         title: `${p} continued to ${app}`,
-        body: `${p} saw the pause card for ${app} and chose to continue. A friendly call might help.`,
+        body: `${p} saw the pause card for ${app} and chose to keep going. A quick call might help.`,
         icon: 'pause',
       };
     }
@@ -98,7 +98,7 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       const when = isTrue(d.afterUnknownCall) ? ' during or soon after a call with an unknown number' : '';
       return {
         title: `${capitalize(app)} was installed on ${possessive(p)} phone`,
-        body: `${capitalize(app)} lets someone control the phone from afar. It was installed${when}. ${p} saw a warning with your number.`,
+        body: `${capitalize(app)} lets someone control the phone from another device. It was installed${when}. ${p} saw a warning with your number.`,
         suggestion: urgent ? callNow : undefined,
         icon: 'remote',
       };
@@ -108,7 +108,7 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       const when = isTrue(d.afterUnknownCall) ? ' during or soon after a call with an unknown number' : '';
       return {
         title: `${p} opened ${app}`,
-        body: `${capitalize(app)} lets someone control the phone from afar. ${p} opened it${when} and saw a warning with your number.`,
+        body: `${capitalize(app)} lets someone control the phone from another device. ${p} opened it${when} and saw a warning with your number.`,
         suggestion: urgent ? callNow : 'If someone in the family uses it to help, you can mark it as trusted under Protection.',
         icon: 'remote',
       };
@@ -118,7 +118,7 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       const when = isTrue(d.afterUnknownCall) ? ' soon after a call with an unknown number' : '';
       return {
         title: `A new app can control ${possessive(p)} screen`,
-        body: `${capitalize(app)} was installed${when} and can control the screen. ${p} saw a gentle warning.`,
+        body: `${capitalize(app)} was installed${when} and can control the screen. ${p} saw a short warning.`,
         suggestion: urgent ? callNow : undefined,
         icon: 'remote',
       };
@@ -146,13 +146,13 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       if (key === 'all') {
         return {
           title: `${p} paused Guardian Mode`,
-          body: `${p} paused Guardian Mode on their phone for a while. That’s their choice; it turns back on by itself.`,
+          body: `${p} paused Guardian Mode on their phone for a while. That’s their choice, and it turns back on by itself.`,
           icon: 'shield',
         };
       }
       return {
         title: `${p} turned off ${label}`,
-        body: `${p} switched off ${label} on their phone. That’s their choice; you might ask how it’s going next time you talk.`,
+        body: `${p} switched off ${label} on their phone. That’s their choice. You could ask how it’s going next time you talk.`,
         icon: 'shield',
       };
     }
@@ -177,7 +177,7 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
       const by = d.deadline ? ` by ${formatHHmm(d.deadline)}` : '';
       return {
         title: `${possessive(p)} phone hasn’t been used yet today`,
-        body: `${possessive(p)} phone hasn’t been picked up yet today${by}. It may be nothing; a quick call can settle it.`,
+        body: `${possessive(p)} phone hasn’t been picked up yet today${by}. It may be nothing, but a quick call will tell you.`,
         icon: 'sun',
       };
     }

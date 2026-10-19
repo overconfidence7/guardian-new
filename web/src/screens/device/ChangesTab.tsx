@@ -11,7 +11,7 @@ export function ChangesTab({ familyId, device }: { familyId: string; device: Dev
   const list = changes.data ?? [];
   return (
     <div className="stack" style={{ ['--gap' as string]: 'var(--s-5)' }}>
-      <p className="lede">Every change a helper makes is listed here, and on {device.parentName}’s phone under “What my family sees”.</p>
+      <p className="lede">Every change a helper makes shows up here, and on {device.parentName}’s phone under “What my family sees”.</p>
       {list.length === 0 ? (
         <EmptyState icon="history" title="No changes yet">
           When someone in the family changes a setting, it shows up here with their name.

@@ -75,8 +75,8 @@ function ExtraAppDialog({ device, existing, onClose, onAdd }: { device: Device; 
     <Dialog
       open
       onClose={onClose}
-      title="Watch another app"
-      description="For money apps we don’t know yet, like a local credit union."
+      title="Add another money app"
+      description="For money apps we don’t know about yet, like a local credit union."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -89,7 +89,7 @@ function ExtraAppDialog({ device, existing, onClose, onAdd }: { device: Device; 
       }
     >
       {candidates.length === 0 ? (
-        <p className="muted">Every app on the phone is either watched already or not reported yet.</p>
+        <p className="muted">Every app the phone has reported is already covered.</p>
       ) : (
         <Field label="App on the phone">
           {(ids) => (
@@ -147,7 +147,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
         icon="pause"
         title="Pause before sending money"
         on={p.pauseTripwires.enabled}
-        intro={`If a bank, payment, gift-card or crypto app opens during a call with an unknown number, or soon after, ${parent} sees a calm card: “Did someone on the phone ask you to do this?” with a big button to call family first.`}
+        intro={`If a bank, payment, gift-card or crypto app opens during a call with an unknown number, or soon after, ${parent} sees a card that asks “Did someone on the phone ask you to do this?” with a big button to call family first.`}
         shares="That a pause card appeared, which app, and whether they chose to call family."
         never="Anything typed or shown inside the app."
       >
@@ -160,7 +160,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
             max={60}
             step={5}
             format={(v) => `${v} min`}
-            hint="Scammers often call back or wait a few minutes. 30 minutes is a good balance."
+            hint="Scammers often call back or wait a few minutes before asking for money. 30 minutes works for most families."
             onChange={(v) => update((c) => void (c.protection.pauseTripwires.windowMinutes = v))}
           />
           <div>
@@ -184,7 +184,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
           </div>
           {watchedInstalled.length > 0 ? (
             <p className="small muted">
-              <Icon name="checkCircle" size={16} className="inline-icon" /> Already watched on this phone: {watchedInstalled.map((a) => a.label).join(', ')}.
+              <Icon name="checkCircle" size={16} className="inline-icon" /> Already covered on this phone: {watchedInstalled.map((a) => a.label).join(', ')}.
             </p>
           ) : null}
           <div className="stack" style={{ ['--gap' as string]: 'var(--s-2)' }}>
@@ -206,7 +206,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
                     <IconButton
                       icon="x"
                       size="sm"
-                      label={`Stop watching ${label(pkg)}`}
+                      label={`Stop pausing for ${label(pkg)}`}
                       onClick={() =>
                         update((c) => {
                           delete c.protection.pauseTripwires.extraPackages[pkg];
@@ -233,7 +233,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
         <Switch label="Remote-control warning" checked={p.remoteAccessAlarm.enabled} onChange={(v) => update((c) => void (c.protection.remoteAccessAlarm.enabled = v))} />
         <Switch
           label="Also warn about new apps that can control the screen"
-          description="A gentler warning for any newly installed app with screen-control abilities."
+          description="A smaller warning for any newly installed app that can control the screen."
           checked={p.remoteAccessAlarm.warnOnControlCapableInstalls}
           disabled={!p.remoteAccessAlarm.enabled}
           onChange={(v) => update((c) => void (c.protection.remoteAccessAlarm.warnOnControlCapableInstalls = v))}
@@ -301,11 +301,11 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
         icon="clock"
         title="Long calls with unknown numbers"
         on={p.longCallAlert.enabled}
-        intro={`Scam calls tend to run long. If ${parent} has been on a call with an unknown number for a while, you’ll get one quiet heads-up so you can ring in.`}
+        intro={`Scam calls tend to run long. If ${parent} has been on a call with an unknown number for a while, you’ll get one heads up so you can call and check in.`}
         shares={`That a call with an unknown number went past ${p.longCallAlert.minutes} minutes.`}
         never="Who called, their number, or what was said. Calls are never recorded."
       >
-        <Switch label="Long-call heads-up" checked={p.longCallAlert.enabled} onChange={(v) => update((c) => void (c.protection.longCallAlert.enabled = v))} />
+        <Switch label="Long-call heads up" checked={p.longCallAlert.enabled} onChange={(v) => update((c) => void (c.protection.longCallAlert.enabled = v))} />
         <Slider
           label="Tell me after"
           value={p.longCallAlert.minutes}
@@ -322,9 +322,9 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
         icon="lock"
         title="Family safe word"
         on={p.safeWord.enabled}
-        intro={`After a call with an unknown number, a gentle card reminds ${parent}: if someone claims to be family in trouble, ask for the safe word.`}
+        intro={`After a call with an unknown number, a card reminds ${parent} to ask for the safe word if someone claims to be family in trouble.`}
         shares="Nothing."
-        never="The safe word itself. It’s stored on the phone so they can look it up, and never sent back."
+        never="The safe word itself. It’s kept on the phone so they can look it up, and it’s never sent back to you."
       >
         <Switch label="Safe word reminder" checked={p.safeWord.enabled} onChange={(v) => update((c) => void (c.protection.safeWord.enabled = v))} />
         <Field label="Our safe word" hint="Something easy to remember and hard to guess. Agree on it together, out loud." optional>
@@ -350,7 +350,7 @@ export function ProtectionTab({ familyId, device }: { familyId: string; device: 
         icon="sun"
         title="Daily “I’m OK”"
         on={config.checkIn.enabled}
-        intro={`No buttons for ${parent}. If the phone hasn’t been picked up by a time you choose, you’ll get a gentle note. You’ll also hear if it’s been silent (off or out of battery) for a whole day.`}
+        intro={`${parent} doesn’t have to tap anything. If the phone hasn’t been picked up by a time you choose, you’ll get a note. You’ll also hear if it’s been silent (off or out of battery) for a whole day.`}
         shares={`Whether the phone has been used today, by ${config.checkIn.deadline}.`}
         never="Where they are or what they used the phone for."
       >

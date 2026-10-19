@@ -153,9 +153,9 @@ private fun Welcome(actions: OnboardingActions) {
             Icon(Icons.Rounded.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(64.dp))
         }
         Spacer(Modifier.height(32.dp))
-        Title("Your phone, with your family in your corner.")
+        Title("Make your phone easier to use.")
         Spacer(Modifier.height(16.dp))
-        Lead("Guardian Mode makes your phone simpler and lets your family help with it from wherever they are. You stay in charge: you'll choose what to turn on, and you can always see what your family can see.")
+        Lead("Guardian Mode gives you a simpler home screen and lets your family help with your phone from wherever they are. You decide what gets turned on, and you can always see what your family can see.")
         Spacer(Modifier.height(40.dp))
         BigButton("Set up with my family", actions::start)
         Spacer(Modifier.height(12.dp))
@@ -260,7 +260,7 @@ private fun Confirm(preview: InvitePreview?, busy: Boolean, error: String?, acti
         Spacer(Modifier.height(20.dp))
         Title("$helper would like to be your helper.")
         Spacer(Modifier.height(16.dp))
-        Lead("Helpers can set up your home screen, send you photos, and get a note if something looks like a scam. You'll choose exactly what to turn on next, and you can remove a helper at any time.")
+        Lead("Helpers can set up your home screen, send you photos, and get a note if something looks like a scam. Next you'll pick what to turn on, and you can remove a helper whenever you want.")
         error?.let {
             Spacer(Modifier.height(16.dp))
             Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
@@ -320,7 +320,7 @@ private fun Consent(
             Spacer(Modifier.height(20.dp))
             BigButton("Next", actions::nextPage)
         } else {
-            Text("Android will ask you to allow a few things:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+            Text("Android will ask you to allow a few things.", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
             Spacer(Modifier.height(12.dp))
             status.forEach { (cap, ok) ->
                 Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -376,7 +376,7 @@ private fun Done(actions: OnboardingActions) {
         Spacer(Modifier.height(32.dp))
         Title("You're all set.")
         Spacer(Modifier.height(16.dp))
-        Lead("Your new home screen is ready. Tap the shield at the top any time to see what your family can see, or to change anything.")
+        Lead("Your new home screen is ready. Tap the shield at the top whenever you want to see what your family can see or change anything.")
         Spacer(Modifier.height(40.dp))
         BigButton("Go to my home screen", actions::finishSetup)
     }

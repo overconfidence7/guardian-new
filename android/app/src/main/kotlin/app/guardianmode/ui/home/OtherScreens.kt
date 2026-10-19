@@ -51,7 +51,7 @@ fun AllAppsScreen(apps: List<AppEntry>, onOpen: (AppEntry) -> Unit, onPhoneSetti
     GuardianPage("All my apps", onBack) {
         if (apps.isEmpty()) {
             Text(
-                "Your family hasn't added any apps here yet.",
+                "Your family hasn't added any apps yet.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Guardian.colors.muted,
                 modifier = Modifier.padding(vertical = 12.dp),

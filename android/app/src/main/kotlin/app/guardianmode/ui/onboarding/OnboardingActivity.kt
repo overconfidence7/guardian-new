@@ -218,11 +218,11 @@ class OnboardingActivity : ComponentActivity() {
     private fun friendlyError(t: Throwable): String {
         val code = (t as? FirebaseFunctionsException)?.code
         return when (code) {
-            FirebaseFunctionsException.Code.NOT_FOUND -> "That code didn't work. Please check it with your family member."
+            FirebaseFunctionsException.Code.NOT_FOUND -> "That code didn't work. Double check it with your family member."
             FirebaseFunctionsException.Code.FAILED_PRECONDITION -> "That code has expired. Ask your family member for a new one."
             FirebaseFunctionsException.Code.UNAVAILABLE, FirebaseFunctionsException.Code.DEADLINE_EXCEEDED ->
-                "The phone isn't connected to the internet. Please connect to Wi-Fi and try again."
-            else -> "Something went wrong. Please try again in a moment."
+                "The phone isn't connected to the internet. Connect to Wi-Fi and try again."
+            else -> "That didn't work. Try again in a minute."
         }
     }
 }

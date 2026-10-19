@@ -24,7 +24,7 @@ data class CardRequest(
 ) {
     val notificationTitle: String
         get() = when (kind) {
-            CardKind.PAUSE -> "Let's pause for a moment"
+            CardKind.PAUSE -> "Hold on a minute"
             CardKind.REMOTE_ACCESS -> if (knownRemoteAccessApp) "This app can control your phone" else "A new app can control your screen"
             CardKind.SAFE_WORD -> "Remember your family safe word"
             CardKind.REMINDER -> reminderTitle

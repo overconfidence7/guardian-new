@@ -170,7 +170,7 @@ private fun PhotoCard(ui: HomeUi, now: ZonedDateTime, onClick: () -> Unit) {
             Icon(Icons.Rounded.Favorite, contentDescription = null, tint = Guardian.colors.accent, modifier = Modifier.size(36.dp))
             Spacer(Modifier.width(16.dp))
             Text(
-                if (ui.paired) "Photos from your family will appear here." else "Welcome to your simpler phone.",
+                if (ui.paired) "Photos from your family will show up here." else "Welcome to your new home screen.",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )

@@ -83,7 +83,7 @@ export function DeviceScreen() {
           <div className="notice notice-info setup-nudge">
             <Icon name="qr" size={22} />
             <div className="grow">
-              <strong>Not connected yet.</strong> <span className="muted">You can set things up now; they’ll appear on the phone once it’s connected.</span>
+              <strong>Not connected yet.</strong> <span className="muted">You can set things up now. They’ll show up on the phone once it’s connected.</span>
             </div>
             <ButtonLink to={paths.setup(familyId, deviceId)} variant="quiet" size="sm">
               Setup code

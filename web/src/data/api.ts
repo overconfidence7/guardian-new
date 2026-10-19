@@ -102,10 +102,10 @@ export function friendlyError(error: unknown): string {
         ? (error as Error).message
         : 'That code has expired or was already used. Ask for a new one.';
     case 'invalid-argument':
-      return 'Something in the form needs another look.';
+      return 'Something in the form isn’t filled in right. Check it and try again.';
     case 'unavailable':
     case 'network-request-failed':
-      return 'You seem to be offline. Your changes are safe here; try again in a moment.';
+      return 'You seem to be offline. Your changes are saved here, so try again in a minute.';
     case 'popup-closed-by-user':
     case 'cancelled-popup-request':
       return 'Sign-in was cancelled.';
@@ -113,7 +113,7 @@ export function friendlyError(error: unknown): string {
       return 'That email address doesn’t look right.';
     case 'quota-exceeded':
     case 'resource-exhausted':
-      return 'Too many tries. Please wait a minute.';
+      return 'Too many tries. Wait a minute and try again.';
     default:
       return (error as Error)?.message || 'Something went wrong. Please try again.';
   }

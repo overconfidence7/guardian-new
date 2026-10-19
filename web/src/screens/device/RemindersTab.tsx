@@ -130,7 +130,7 @@ function ReminderDialog({ initial, parent, onClose, onSave }: { initial: Reminde
         checked={r.notifyFamilyIfMissed}
         onChange={(v) => setR({ ...r, notifyFamilyIfMissed: v })}
         label="Tell me if it’s missed"
-        description={`If ${parent} hasn’t tapped Done within an hour, you’ll get a gentle note. ${parent} can see this setting.`}
+        description={`If ${parent} hasn’t tapped Done within an hour, you’ll get a note. ${parent} can see this setting.`}
       />
       {error ? (
         <p className="field-error" role="alert">
@@ -151,14 +151,14 @@ export function RemindersTab({ device }: { device: Device }) {
   return (
     <div className="stack" style={{ ['--gap' as string]: 'var(--s-5)' }}>
       <div className="row spread">
-        <p className="lede grow">Pills and appointments, on a big card at the right time.</p>
+        <p className="lede grow">Pills and appointments show up on a big card at the right time.</p>
         <Button variant="primary" icon="plus" onClick={() => setEditing(blank())}>
           New reminder
         </Button>
       </div>
       {sorted.length === 0 ? (
         <EmptyState icon="pill" title="No reminders yet">
-          Medication times and appointments work well. Keep it to the ones that matter.
+          Medications and appointments work best. Stick to the ones that really matter.
         </EmptyState>
       ) : (
         <ul className="list-plain stack" style={{ ['--gap' as string]: 'var(--s-3)' }}>

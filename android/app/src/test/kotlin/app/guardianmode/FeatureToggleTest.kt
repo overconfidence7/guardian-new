@@ -30,7 +30,7 @@ class FeatureToggleTest {
 
     @Test fun `card requests map from engine actions`() {
         val req = CardRequest.from(GuardianAction.ShowPauseCard(AppCategory.CRYPTO, "com.coinbase.android", "Coinbase", true, 0))!!
-        assertThat(req.notificationTitle).isEqualTo("Let's pause for a moment")
+        assertThat(req.notificationTitle).isEqualTo("Hold on a minute")
         assertThat(req.duringCall).isTrue()
         assertThat(CardRequest.from(GuardianAction.ShowSafeWordCard)).isNotNull()
     }
