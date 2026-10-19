@@ -134,7 +134,7 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     if (isTrue(data.duringCall)) {
       return {
         title: `${p} paused before opening ${app}`,
-        body: `${p} opened ${app} during a call with an unknown number. A pause card was shown.`,
+        body: `${p} opened ${app} during a call with an unknown number, so the phone showed a pause card first.`,
       };
     }
     const minutes = intOf(data.minutesSinceCall);
@@ -144,29 +144,29 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
         : `${minutesPhrase(minutes)} after a call from an unknown number`;
     return {
       title: `${p} paused before opening ${app}`,
-      body: `${p} opened ${app} ${when}. A pause card was shown.`,
+      body: `${p} opened ${app} ${when}, so the phone showed a pause card first.`,
     };
   },
 
   PAUSE_CALLED_FAMILY: (p, data) => ({
     title: `${p} chose to call family first`,
-    body: `After the pause card for ${appOf(data)}, ${p} tapped to call family before going on.`,
+    body: `${p} saw the pause card for ${appOf(data)} and tapped to call family before going on.`,
   }),
 
   PAUSE_CONTINUED: (p, data) => {
     const app = appOf(data);
     return {
-      title: `${p} continued to ${app}`,
-      body: `${p} saw the pause card for ${app} and chose to continue. A friendly call might help.`,
+      title: `${p} went ahead with ${app}`,
+      body: `${p} saw the pause card for ${app} and went ahead anyway. A quick call will tell you if everything’s all right.`,
     };
   },
 
   REMOTE_ACCESS_INSTALLED: (p, data) => {
     const app = appOf(data);
-    const when = isTrue(data.afterUnknownCall) ? " during or soon after a call with an unknown number" : "";
+    const when = isTrue(data.afterUnknownCall) ? " It was installed during or soon after a call with an unknown number." : "";
     return {
       title: `${capitalize(app)} was installed on ${possessive(p)} phone`,
-      body: `${capitalize(app)} lets someone control the phone from afar. It was installed${when}. ${p} saw a warning with your number.`,
+      body: `${capitalize(app)} lets someone control the phone from somewhere else.${when} ${p} saw a warning with your number on it. A quick call will tell you.`,
     };
   },
 
@@ -175,7 +175,7 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     const when = isTrue(data.afterUnknownCall) ? " during or soon after a call with an unknown number" : "";
     return {
       title: `${p} opened ${app}`,
-      body: `${capitalize(app)} lets someone control the phone from afar. ${p} opened it${when} and saw a warning with your number.`,
+      body: `${capitalize(app)} lets someone control the phone from somewhere else. ${p} opened it${when} and saw a warning with your number on it. A quick call will tell you what’s going on.`,
     };
   },
 
@@ -184,17 +184,17 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     const when = isTrue(data.afterUnknownCall) ? " soon after a call with an unknown number" : "";
     return {
       title: `A new app can control ${possessive(p)} screen`,
-      body: `${capitalize(app)} was installed${when} and can control the screen. ${p} saw a gentle warning.`,
+      body: `${capitalize(app)} was installed${when} and can control the screen. ${p} saw a short warning about it on the phone. A quick call will tell you if they meant to install it.`,
     };
   },
 
   HELP_REQUESTED: (p, data) => {
     const note = data.note?.trim();
     return {
-      title: `${p} would like some help`,
+      title: `${p} asked for help`,
       body:
         note && note.length > 0
-          ? `${p} sent you a picture of their screen: ${quote(note)}`
+          ? `${p} sent you a picture of their screen with a note: ${quote(note)}`
           : `${p} sent you a picture of their screen.`,
     };
   },
@@ -216,18 +216,18 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     if (data.enabled === "true") {
       return {
         title: `${p} turned on ${label}`,
-        body: `${p} switched ${label} back on.`,
+        body: `${p} turned ${label} back on.`,
       };
     }
     if (key === "all") {
       return {
         title: `${p} paused Guardian Mode`,
-        body: `${p} paused Guardian Mode on their phone for a while. That’s their choice; it turns back on by itself.`,
+        body: `${p} paused Guardian Mode on their phone for a while. That’s up to them, and it turns back on by itself.`,
       };
     }
     return {
       title: `${p} turned off ${label}`,
-      body: `${p} switched off ${label} on their phone. That’s their choice; you might ask how it’s going next time you talk.`,
+      body: `${p} turned off ${label} on their phone. That’s up to them. You could ask how it’s going next time you talk.`,
     };
   },
 
@@ -249,14 +249,16 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     if (data.reason === "silent") {
       return {
         title: `${possessive(p)} phone has been quiet for a day`,
-        body: `${possessive(p)} phone hasn’t been in touch for over 24 hours. It may be switched off or out of battery. A call could help.`,
+        body: `We haven’t heard from ${possessive(p)} phone in over 24 hours. It may be switched off or out of battery. A quick call will tell you.`,
       };
     }
     const deadline = data.deadline;
-    const by = deadline ? ` by ${friendlyTime(deadline)}` : "";
+    const notYet = deadline
+      ? `hadn’t been picked up by ${friendlyTime(deadline)} today`
+      : "hasn’t been picked up yet today";
     return {
       title: `${possessive(p)} phone hasn’t been used yet today`,
-      body: `${possessive(p)} phone hasn’t been picked up yet today${by}. It may be nothing; a quick call can settle it.`,
+      body: `${possessive(p)} phone ${notYet}. It may be nothing. A quick call will tell you.`,
     };
   },
 };

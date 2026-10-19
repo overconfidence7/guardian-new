@@ -28,7 +28,7 @@ describe("notificationCopy", () => {
   it("PAUSE_SHOWN after a call", () => {
     expect(copy("PAUSE_SHOWN", { app: "Chase", duringCall: "false", minutesSinceCall: "4" })).toEqual({
       title: "Margaret paused before opening Chase",
-      body: "Margaret opened Chase 4 minutes after a call from an unknown number. A pause card was shown.",
+      body: "Margaret opened Chase 4 minutes after a call from an unknown number, so the phone showed a pause card first.",
     });
   });
 
@@ -41,28 +41,28 @@ describe("notificationCopy", () => {
 
   it("PAUSE_SHOWN during a call", () => {
     expect(copy("PAUSE_SHOWN", { app: "Chase", duringCall: "true" }, "URGENT").body).toBe(
-      "Margaret opened Chase during a call with an unknown number. A pause card was shown.",
+      "Margaret opened Chase during a call with an unknown number, so the phone showed a pause card first.",
     );
   });
 
   it("PAUSE_CALLED_FAMILY and PAUSE_CONTINUED", () => {
     expect(copy("PAUSE_CALLED_FAMILY", { app: "Chase" }).title).toBe("Margaret chose to call family first");
     expect(copy("PAUSE_CONTINUED", { app: "Chase" })).toEqual({
-      title: "Margaret continued to Chase",
-      body: "Margaret saw the pause card for Chase and chose to continue. A friendly call might help.",
+      title: "Margaret went ahead with Chase",
+      body: "Margaret saw the pause card for Chase and went ahead anyway. A quick call will tell you if everything’s all right.",
     });
   });
 
   it("REMOTE_ACCESS_INSTALLED after an unknown call", () => {
     expect(copy("REMOTE_ACCESS_INSTALLED", { app: "AnyDesk", afterUnknownCall: "true" }, "URGENT")).toEqual({
       title: "AnyDesk was installed on Margaret’s phone",
-      body: "AnyDesk lets someone control the phone from afar. It was installed during or soon after a call with an unknown number. Margaret saw a warning with your number.",
+      body: "AnyDesk lets someone control the phone from somewhere else. It was installed during or soon after a call with an unknown number. Margaret saw a warning with your number on it. A quick call will tell you.",
     });
   });
 
   it("REMOTE_ACCESS_INSTALLED without a call", () => {
     expect(copy("REMOTE_ACCESS_INSTALLED", { app: "AnyDesk", afterUnknownCall: "false" }).body).toBe(
-      "AnyDesk lets someone control the phone from afar. It was installed. Margaret saw a warning with your number.",
+      "AnyDesk lets someone control the phone from somewhere else. Margaret saw a warning with your number on it. A quick call will tell you.",
     );
   });
 
@@ -70,14 +70,14 @@ describe("notificationCopy", () => {
     expect(copy("REMOTE_ACCESS_OPENED", { app: "TeamViewer" }).title).toBe("Margaret opened TeamViewer");
     expect(copy("CONTROL_APP_INSTALLED", { app: "Screen Helper" })).toEqual({
       title: "A new app can control Margaret’s screen",
-      body: "Screen Helper was installed and can control the screen. Margaret saw a gentle warning.",
+      body: "Screen Helper was installed and can control the screen. Margaret saw a short warning about it on the phone. A quick call will tell you if they meant to install it.",
     });
   });
 
   it("HELP_REQUESTED with and without a note", () => {
     expect(copy("HELP_REQUESTED", { note: "Is this real?" }, "URGENT")).toEqual({
-      title: "Margaret would like some help",
-      body: "Margaret sent you a picture of their screen: “Is this real?”",
+      title: "Margaret asked for help",
+      body: "Margaret sent you a picture of their screen with a note: “Is this real?”",
     });
     expect(copy("HELP_REQUESTED").body).toBe("Margaret sent you a picture of their screen.");
   });
@@ -93,7 +93,7 @@ describe("notificationCopy", () => {
   it("PROTECTION_CHANGED_BY_PARENT names the feature", () => {
     expect(copy("PROTECTION_CHANGED_BY_PARENT", { feature: "longCall", enabled: "false" })).toEqual({
       title: "Margaret turned off long-call notices",
-      body: "Margaret switched off long-call notices on their phone. That’s their choice; you might ask how it’s going next time you talk.",
+      body: "Margaret turned off long-call notices on their phone. That’s up to them. You could ask how it’s going next time you talk.",
     });
     expect(copy("PROTECTION_CHANGED_BY_PARENT", { feature: "screening", enabled: "true" }).title).toBe(
       "Margaret turned on unknown caller screening",
@@ -115,11 +115,11 @@ describe("notificationCopy", () => {
   it("CHECK_IN_MISSED, daily and silent", () => {
     expect(copy("CHECK_IN_MISSED", { deadline: "11:00" })).toEqual({
       title: "Margaret’s phone hasn’t been used yet today",
-      body: "Margaret’s phone hasn’t been picked up yet today by 11:00 AM. It may be nothing; a quick call can settle it.",
+      body: "Margaret’s phone hadn’t been picked up by 11:00 AM today. It may be nothing. A quick call will tell you.",
     });
     expect(copy("CHECK_IN_MISSED", { reason: "silent" }, "URGENT")).toEqual({
       title: "Margaret’s phone has been quiet for a day",
-      body: "Margaret’s phone hasn’t been in touch for over 24 hours. It may be switched off or out of battery. A call could help.",
+      body: "We haven’t heard from Margaret’s phone in over 24 hours. It may be switched off or out of battery. A quick call will tell you.",
     });
   });
 
