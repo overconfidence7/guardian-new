@@ -151,6 +151,13 @@ export function describeConfigChanges(before: DeviceConfig, after: DeviceConfig,
   for (const a of appsAdded) out.push(`Added ${labelFor(a)} to All my apps`);
   for (const a of appsRemoved) out.push(`Removed ${labelFor(a)} from All my apps`);
 
+  // Lock
+  if (before.lock.level !== after.lock.level) {
+    const level = { SIMPLE: "Simple", GUIDED: "Guided", LOCKED: "Locked" }[after.lock.level];
+    out.push(`Changed the phone lock to ${level}`);
+  }
+  if (after.lock.remoteUnlockUntil > before.lock.remoteUnlockUntil) out.push("Unlocked the phone for a few minutes");
+
   // Protection
   const pb = before.protection;
   const pa = after.protection;

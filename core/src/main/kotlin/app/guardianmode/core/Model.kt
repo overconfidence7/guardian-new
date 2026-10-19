@@ -23,6 +23,7 @@ data class DeviceConfig(
     val protection: ProtectionSettings = ProtectionSettings(),
     val checkIn: CheckInSettings = CheckInSettings(),
     val reminders: List<Reminder> = emptyList(),
+    val lock: LockSettings = LockSettings(),
 ) {
     /** The family member the parent's "Call ___ first" buttons dial. */
     val primaryHelper: FamilyContact?
@@ -32,6 +33,26 @@ data class DeviceConfig(
     companion object {
         const val SCHEMA_VERSION = 1
     }
+}
+
+/** How locked down the phone is. See LockPolicy for what each level covers. */
+@Serializable
+data class LockSettings(
+    val level: LockLevel = LockLevel.SIMPLE,
+    /** A helper's temporary unlock from the dashboard, epoch millis. */
+    val remoteUnlockUntil: Long = 0,
+)
+
+@Serializable
+enum class LockLevel {
+    /** Big home screen; only leaving Guardian or changing the lock needs the code. */
+    SIMPLE,
+
+    /** Also the app list, phone settings and protection switches need the code. */
+    GUIDED,
+
+    /** Also any app the family didn't pick, Settings included, is covered by a code screen. */
+    LOCKED,
 }
 
 @Serializable

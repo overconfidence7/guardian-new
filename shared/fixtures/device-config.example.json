@@ -49,5 +49,6 @@
   "reminders": [
     { "id": "r1", "title": "Blood pressure pill", "detail": "One white tablet with water", "kind": "MEDICATION", "times": ["08:00", "20:00"], "daysOfWeek": [], "notifyFamilyIfMissed": true },
     { "id": "r2", "title": "Dr. Patel checkup", "detail": "Bring your pill list", "kind": "APPOINTMENT", "times": ["14:30"], "date": "2026-11-03" }
-  ]
+  ],
+  "lock": { "level": "GUIDED", "remoteUnlockUntil": 0 }
 }

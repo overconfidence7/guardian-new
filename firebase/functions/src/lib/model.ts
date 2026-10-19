@@ -155,6 +155,12 @@ export const deviceConfigSchema = z.object({
   protection: protectionSchema.prefault({}),
   checkIn: checkInSchema.prefault({}),
   reminders: z.array(reminderSchema).default([]),
+  lock: z
+    .object({
+      level: z.enum(["SIMPLE", "GUIDED", "LOCKED"]).default("SIMPLE"),
+      remoteUnlockUntil: z.number().default(0),
+    })
+    .prefault({}),
 });
 
 export type DeviceConfig = z.infer<typeof deviceConfigSchema>;
