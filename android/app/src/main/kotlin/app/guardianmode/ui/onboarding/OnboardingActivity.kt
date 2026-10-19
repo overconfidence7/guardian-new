@@ -92,7 +92,7 @@ class OnboardingActivity : ComponentActivity() {
                 pageIndex--
                 accepted = container.store.current.consent[ConsentPages.all[pageIndex].key] == true
                 Stage.CONSENT
-            } else if (container.store.current.pairing != null) Stage.CONSENT else Stage.CODE
+            } else if (container.store.current.pairing != null) Stage.CONSENT else Stage.WELCOME
             Stage.LOCK_LEVEL -> Stage.CONSENT
             Stage.SET_CODE -> Stage.LOCK_LEVEL
             Stage.DONE -> if (container.lock.hasCode) Stage.LOCK_LEVEL else Stage.SET_CODE
