@@ -75,6 +75,16 @@ The card shows once per app category per call; "continue" silences that app unti
 
 **★ F12. Transparency screen.** "What my family can see". Lists: who your helpers are (names, photos; "Remove" with confirmation), every feature with what it shares and what it never shares, on/off switch for each (turning one off tells helpers), "Pause everything for 1 hour", the last 30 alerts that went to the family with the exact text they saw, and recent changes helpers made. Generated from live config (`core/Transparency.kt`).
 
+**F13. Lock levels and the lock code** (added 2026-10-19 from Nate's phone test). Set during setup and changed later with the code from the transparency screen ("Phone lock"). The code is 4 to 8 digits, stored only as a salted hash on the phone, opens everything for 10 minutes, and backs off after 5 wrong tries (30 s doubling to 16 min). Levels (`core/LockPolicy.kt`):
+- **Simple:** big home screen, the rest of the phone works normally. The code guards only "Stop using Guardian Mode" and the lock settings.
+- **Guided:** also "All my apps", phone settings and the protection switches need the code.
+- **Locked:** also any app the family didn't add (Settings and the package installer included) is covered by a code screen as soon as it comes to the front, using the same Usage access signal as the pause cards. Calls, the dialer, emergency screens and system dialogs are never covered.
+A normal home app can't block safe mode or a factory reset, and Guardian doesn't try to (Nate chose code screens over device-owner kiosk mode on 2026-10-19, so the app stays Play-compatible). Helpers will be able to unlock remotely (`lock.remoteUnlockUntil`) and reset a forgotten code once phones are linked; both are risky changes that follow docs/SECURITY.md.
+
+**F14. First-run choice.** The first screen asks "How will this phone be used?": "Make this phone simpler" (the parent setup) or "Help someone else's phone" (helper mode: link to the parent's phone, unlock it, approve apps, send photos; it waits on the Blaze switch and says so in the test build).
+
+**F15. Photos from any app.** The parent's phone adds pictures to the photo card from Android's photo picker (no permission; includes Google Photos where the phone offers it) and from "Share > Add to photo card" in any app (Google Photos, Amazon Photos, the gallery). Pictures are resized to 1600 px and kept on the phone only. Google's Library API no longer lets apps read a user's library (only the Picker API), and Amazon Photos has no public API, so Share is the way in.
+
 ### Explicitly out of scope
 
 Message reading, call recording, location tracking, content filtering, browsing history, app time limits, hiding the app, anything on iOS for the parent side.

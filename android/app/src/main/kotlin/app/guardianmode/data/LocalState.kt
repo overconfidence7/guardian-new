@@ -67,11 +67,21 @@ data class LocalState(
     val lastInstallCheckAt: Long = 0,
     /** Reminder occurrence key ("id@epochMillis") -> when the parent tapped Done. */
     val remindersDone: Map<String, Long> = emptyMap(),
+    /** Photos added on this phone (shared from another app or picked), kept apart from the family's. */
+    val localPhotos: List<PhotoItem> = emptyList(),
+    /** Salted hash of the lock code. Empty until one is set; never leaves the phone. */
+    val lockCodeHash: String = "",
+    val lockCodeSalt: String = "",
+    /** A correct code keeps everything open until this time, epoch millis. */
+    val unlockedUntil: Long = 0,
+    val lockFailures: Int = 0,
+    val lockRetryAt: Long = 0,
 ) {
     fun isPaused(now: Long) = pausedUntil > now
 
     companion object {
         const val MAX_SHARED_HISTORY = 30
         const val MAX_OUTBOX = 200
+        const val MAX_LOCAL_PHOTOS = 30
     }
 }

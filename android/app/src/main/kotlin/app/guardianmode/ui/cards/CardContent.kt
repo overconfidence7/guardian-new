@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.PanTool
 import androidx.compose.material.icons.rounded.PhonelinkLock
 import androidx.compose.material.icons.rounded.Snooze
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -51,7 +52,9 @@ import androidx.compose.ui.unit.dp
 import app.guardianmode.core.AppCategory
 import app.guardianmode.core.DeviceConfig
 import app.guardianmode.core.FamilyContact
+import app.guardianmode.protection.UnlockResult
 import app.guardianmode.ui.components.BigButton
+import app.guardianmode.ui.components.UnlockForm
 import app.guardianmode.ui.theme.Guardian
 import java.time.Instant
 import java.time.ZoneId
@@ -65,6 +68,7 @@ interface CardActions {
     fun reminderDone()
     fun snooze()
     fun dismiss()
+    suspend fun tryUnlock(code: String): UnlockResult = UnlockResult.Wrong
 }
 
 @Composable
@@ -75,6 +79,7 @@ fun CardContent(request: CardRequest, config: DeviceConfig, actions: CardActions
         CardKind.REMOTE_ACCESS -> RemoteAccessCard(request, helper, actions)
         CardKind.SAFE_WORD -> SafeWordCard(config, actions)
         CardKind.REMINDER -> ReminderCard(request, actions)
+        CardKind.LOCKED -> LockedCard(request, actions)
     }
 }
 
@@ -255,5 +260,26 @@ fun ReminderCard(request: CardRequest, actions: CardActions) {
             BigButton("Done", actions::reminderDone, icon = Icons.Rounded.Check)
             BigButton("Remind me in 10 minutes", actions::snooze, icon = Icons.Rounded.Snooze, primary = false, contentColor = ink)
         }
+    }
+}
+
+/** Covers an app the family didn't put on this phone, at the Locked level. */
+@Composable
+fun LockedCard(request: CardRequest, actions: CardActions) {
+    val ink = MaterialTheme.colorScheme.onPrimaryContainer
+    val name = request.appLabel.ifBlank { "This app" }
+    CardFrame(Icons.Rounded.Lock, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer) {
+        Headline("$name is locked", ink)
+        Spacer(Modifier.height(16.dp))
+        Body("This phone is set up to keep things simple. To open $name, enter the code.", ink)
+        Spacer(Modifier.height(24.dp))
+        UnlockForm(
+            prompt = "Your code",
+            tryUnlock = actions::tryUnlock,
+            onUnlocked = actions::dismiss,
+            color = ink,
+        )
+        Spacer(Modifier.height(14.dp))
+        BigButton("Go to my home screen", actions::goHome, primary = false, contentColor = ink)
     }
 }

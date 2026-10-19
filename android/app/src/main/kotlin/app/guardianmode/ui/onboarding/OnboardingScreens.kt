@@ -69,10 +69,19 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import app.guardianmode.cloud.InvitePreview
 import app.guardianmode.protection.Capability
+import app.guardianmode.core.LockLevel
 import app.guardianmode.ui.components.BigButton
+import app.guardianmode.ui.lock.LockLevelPicker
+import app.guardianmode.ui.lock.SetCodeForm
 import app.guardianmode.ui.theme.Guardian
 
 interface OnboardingActions {
+    fun simplifyThisPhone() {}
+    fun helpSomeone() {}
+    fun backToRole() {}
+    fun onLockLevel(level: LockLevel) {}
+    fun lockLevelChosen() {}
+    fun onCodeSet(code: String) {}
     fun start()
     fun setupAlone()
     fun onCodeChange(value: String)
@@ -102,8 +111,13 @@ fun OnboardingFlow(
     refreshKey: Int,
     granted: (Capability) -> Boolean,
     actions: OnboardingActions,
+    lockLevel: LockLevel = LockLevel.GUIDED,
 ) {
     when (stage) {
+        Stage.ROLE -> RoleChoice(actions)
+        Stage.HELPER -> HelperIntro(actions)
+        Stage.LOCK_LEVEL -> LockLevelChoice(lockLevel, actions)
+        Stage.SET_CODE -> SetCode(actions)
         Stage.WELCOME -> Welcome(actions)
         Stage.CODE -> CodeEntry(code, busy, error, actions)
         Stage.SCAN -> Scan(actions)
@@ -140,6 +154,88 @@ private fun Title(text: String) {
 @Composable
 private fun Lead(text: String) {
     Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
+}
+
+@Composable
+private fun RoleChoice(actions: OnboardingActions) {
+    Page {
+        Spacer(Modifier.height(40.dp))
+        Box(
+            Modifier.size(112.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(64.dp))
+        }
+        Spacer(Modifier.height(32.dp))
+        Title("How will this phone be used?")
+        Spacer(Modifier.height(16.dp))
+        Lead("Guardian Mode goes on the phone that should be simpler. Family who help can use it on their own phone too.")
+        Spacer(Modifier.height(32.dp))
+        BigButton("Make this phone simpler", actions::simplifyThisPhone)
+        Text(
+            "For the person who will use this phone every day. You can set it up for them.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Guardian.colors.muted,
+            modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
+        )
+        BigButton("Help someone else's phone", actions::helpSomeone, primary = false)
+        Text(
+            "For family who help from their own phone.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Guardian.colors.muted,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun HelperIntro(actions: OnboardingActions) {
+    Page {
+        Spacer(Modifier.height(24.dp))
+        Title("Helping from your phone")
+        Spacer(Modifier.height(16.dp))
+        Lead("Once their phone is set up, you'll link to it from here. Then you can unlock it, approve new apps, change the home screen and send photos without being there.")
+        Spacer(Modifier.height(20.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Guardian.colors.pauseSurface)
+                .padding(18.dp),
+        ) {
+            Text(
+                "Linking phones isn't turned on in this test version yet. For now, set up their phone with \"Make this phone simpler\".",
+                style = MaterialTheme.typography.bodyLarge,
+                color = Guardian.colors.onPauseSurface,
+            )
+        }
+        Spacer(Modifier.height(32.dp))
+        BigButton("Back", actions::backToRole, primary = false)
+    }
+}
+
+@Composable
+private fun LockLevelChoice(level: LockLevel, actions: OnboardingActions) {
+    Page {
+        Title("How locked down should this phone be?")
+        Spacer(Modifier.height(12.dp))
+        Lead("You can change this later with the code.")
+        Spacer(Modifier.height(20.dp))
+        LockLevelPicker(level, actions::onLockLevel)
+        Spacer(Modifier.height(28.dp))
+        BigButton("Next", actions::lockLevelChosen)
+    }
+}
+
+@Composable
+private fun SetCode(actions: OnboardingActions) {
+    Page {
+        Title("Pick a lock code")
+        Spacer(Modifier.height(12.dp))
+        Lead("The code is how you get out of the simple home screen, change the lock, or stop using Guardian Mode.")
+        Spacer(Modifier.height(20.dp))
+        SetCodeForm(onSet = actions::onCodeSet)
+    }
 }
 
 @Composable

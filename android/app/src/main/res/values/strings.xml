@@ -9,4 +9,5 @@
     <string name="channel_reminders_desc">Medication and appointment reminders your family set up.</string>
     <string name="channel_family">From your family</string>
     <string name="channel_family_desc">New photos and messages from your family.</string>
+    <string name="share_to_photo_card">Add to photo card</string>
 </resources>
