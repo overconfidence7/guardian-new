@@ -24,12 +24,17 @@ Everything runs in the cloud on GitHub Actions. Nothing requires a local machine
 | Weekly and before release | Firebase Test Lab (set up once the Firebase project exists) | Physical Samsung Galaxy A and Pixel: Robo crawl + instrumented smoke suite |
 | Release candidate | all of the above + `docs/RELEASE.md` checklist on two real phones | |
 
-## Testing on a real phone
+## Install on a real phone
 
-1. Download `guardian-debug-apk` from the latest CI run's artifacts.
-2. Install it (`adb install`, or open the file on the phone).
-3. Android 15+ blocks some permissions for sideloaded apps. When a switch is greyed out, open Settings > Apps > Guardian Mode debug > ⋮ > "Allow restricted settings", then try again.
-4. Debug builds talk to the Firebase emulators at `10.0.2.2` (an emulator's view of the host). On a real phone, build with `GUARDIAN_USE_EMULATORS=false` and the real Firebase settings once the project exists.
+Every push to `main` publishes `guardian-mode-test.apk` to the **testing** pre-release (workflow `test-apk.yml`). It is signed with a fixed test key in `android/testing/`, so a new build installs over the old one and keeps its settings. That key is only for test builds; Play releases will use a separate upload key.
+
+1. On the phone, sign in to GitHub in the browser, open the repo's Releases page, and tap `guardian-mode-test.apk` under "Test build". (Or download it on a computer and copy it over, or `adb install -r guardian-mode-test.apk`.)
+2. Allow the browser to install unknown apps when Android asks, then install.
+3. Android 13+ blocks some permissions for sideloaded apps. When a switch is greyed out, open Settings > Apps > Guardian Mode debug > ⋮ > "Allow restricted settings", then try again.
+4. In the app, choose "Set up on my own for now". Family pairing needs the real Firebase project (Blaze plan), so it is off in this build.
+5. Accept Guardian Mode as the Home app when asked.
+
+This build has no cloud connection: it never contacts the emulator host, and anything it would send to helpers stays queued on the phone.
 
 ## Simulating a scam call on an emulator
 

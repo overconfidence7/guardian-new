@@ -10,6 +10,7 @@ captures/
 *.keystore
 *.jks
 !android/app/debug.keystore
+!android/testing/test-debug.keystore
 google-services.json
 
 # Node
