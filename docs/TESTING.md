@@ -26,7 +26,7 @@ Everything runs in the cloud on GitHub Actions. Nothing requires a local machine
 
 ## Install on a real phone
 
-Every push to `main` publishes `guardian-mode-test.apk` to the **testing** pre-release (workflow `test-apk.yml`). It is signed with a fixed test key in `android/testing/`, so a new build installs over the old one and keeps its settings. That key is only for test builds; Play releases use the upload key in `docs/RELEASE.md`.
+Every push to `main` publishes `guardian-mode-test.apk` to the **testing** pre-release (workflow `test-apk.yml`). It is signed with a fixed test key in `android/testing/`, so a new build installs over the old one and keeps its settings. That key is only for test builds; Play releases will use a separate upload key.
 
 1. On the phone, sign in to GitHub in the browser, open the repo's Releases page, and tap `guardian-mode-test.apk` under "Test build". (Or download it on a computer and copy it over, or `adb install -r guardian-mode-test.apk`.)
 2. Allow the browser to install unknown apps when Android asks, then install.
