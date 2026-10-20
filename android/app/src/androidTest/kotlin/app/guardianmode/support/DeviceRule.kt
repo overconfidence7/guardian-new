@@ -1,6 +1,7 @@
 package app.guardianmode.support
 
 import android.Manifest
+import android.os.Build
 import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
@@ -309,20 +310,29 @@ class DeviceRule(
      * Telecom itself is checked, and asked to answer (as adb's shell could) while it still rings.
      */
     fun answer(number: String) {
+        // Android 10: answer through Telecom first, so Telecom (and the PHONE_STATE broadcasts
+        // Guardian listens to) moves to off-hook, and the modem follows through the RIL.
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) telecomAccept()
         runCatching { EmulatorConsole.accept(number) }
         waitForCallState(2, timeoutMs = 3_000)
         if (!waitUntil(1_500) { !incomingCallShown() }) {
             Log.w(TAG, "incoming-call heads-up still up after gsm accept; answering through Telecom")
-            runCatching {
-                asShell(Manifest.permission.ANSWER_PHONE_CALLS) {
-                    @Suppress("DEPRECATION")
-                    context.getSystemService(android.telecom.TelecomManager::class.java).acceptRingingCall()
-                }
-            }
+            telecomAccept()
             if (!waitUntil(3_000) { !incomingCallShown() }) shell("input keyevent KEYCODE_CALL")
             waitUntil(3_000) { !incomingCallShown() }
         }
         if (callState() != 2) shell("input keyevent KEYCODE_CALL")
+        trace("answer ${number.takeLast(4)}: incomingShown=${incomingCallShown()}")
+    }
+
+    /** Telecom's acceptRingingCall with the shell's ANSWER_PHONE_CALLS, as adb could. */
+    private fun telecomAccept() {
+        runCatching {
+            asShell(Manifest.permission.ANSWER_PHONE_CALLS) {
+                @Suppress("DEPRECATION")
+                context.getSystemService(android.telecom.TelecomManager::class.java).acceptRingingCall()
+            }
+        }.onFailure { Log.w(TAG, "acceptRingingCall failed: $it"); trace("acceptRingingCall failed: $it") }
     }
 
     /**
