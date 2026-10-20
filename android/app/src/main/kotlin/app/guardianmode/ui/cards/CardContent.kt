@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -174,7 +175,7 @@ fun PauseCard(request: CardRequest, helper: FamilyContact?, actions: CardActions
                 BigButton("Call ${helper.name} first", { actions.callFamily(helper.phone) }, icon = Icons.Rounded.Call)
             }
             BigButton("I'm fine, continue", actions::continueAnyway, primary = helper == null, contentColor = if (helper != null) ink else null)
-            TextButton(onClick = actions::goHome, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = actions::goHome, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                 Text("Go to my home screen", style = MaterialTheme.typography.labelLarge, color = ink)
             }
         }
@@ -202,7 +203,7 @@ fun RemoteAccessCard(request: CardRequest, helper: FamilyContact?, actions: Card
                 BigButton("Call ${helper.name}", { actions.callFamily(helper.phone) }, icon = Icons.Rounded.Call)
             }
             BigButton("Remove ${request.appLabel}", actions::removeApp, icon = Icons.Rounded.Delete, primary = helper == null, contentColor = if (helper != null) ink else null)
-            TextButton(onClick = actions::dismiss, modifier = Modifier.fillMaxWidth()) {
+            TextButton(onClick = actions::dismiss, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                 Text("I trust this app", style = MaterialTheme.typography.labelLarge, color = ink)
             }
         }

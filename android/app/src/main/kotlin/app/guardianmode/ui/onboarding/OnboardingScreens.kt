@@ -255,7 +255,7 @@ private fun Welcome(actions: OnboardingActions) {
         Spacer(Modifier.height(40.dp))
         BigButton("Set up with my family", actions::start)
         Spacer(Modifier.height(12.dp))
-        TextButton(onClick = actions::setupAlone, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+        TextButton(onClick = actions::setupAlone, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
             Text("Set up on my own for now", style = MaterialTheme.typography.labelLarge)
         }
     }
@@ -281,7 +281,7 @@ private fun CodeEntry(code: String, busy: Boolean, error: String?, actions: Onbo
                 imeAction = ImeAction.Done,
             ),
             keyboardActions = KeyboardActions(onDone = { actions.submitCode() }),
-            modifier = Modifier.focusRequester(focus).semantics { contentDescription = "Setup code" },
+            modifier = Modifier.heightIn(min = 64.dp).focusRequester(focus).semantics { contentDescription = "Setup code" },
             decorationBox = {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     repeat(6) { i ->
@@ -436,7 +436,7 @@ private fun Consent(
             Spacer(Modifier.height(20.dp))
             BigButton("Continue", actions::requestNextMissing, icon = Icons.Rounded.Check)
             Spacer(Modifier.height(12.dp))
-            TextButton(onClick = actions::nextPage, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+            TextButton(onClick = actions::nextPage, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp)) {
                 Text("Skip for now", style = MaterialTheme.typography.labelLarge)
             }
         }

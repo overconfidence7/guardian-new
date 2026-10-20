@@ -123,7 +123,8 @@ class CloudSync(
             deviceId = data["deviceId"] as String,
             helperName = helperName,
         )
-        store.update { it.copy(pairing = pairing) }
+        // What happened before the family joined was never sent to them, so it isn't listed as "told".
+        store.update { it.copy(pairing = pairing, sharedEvents = emptyList()) }
         start()
         return pairing
     }

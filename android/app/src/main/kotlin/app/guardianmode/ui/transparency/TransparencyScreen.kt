@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -106,7 +108,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
                 Avatar(helper.name, helper.photoUrl, 56.dp)
                 Spacer(Modifier.width(16.dp))
                 Text(helper.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground)
-                TextButton(onClick = { confirmRemove = helper }) {
+                TextButton(onClick = { confirmRemove = helper }, modifier = Modifier.heightIn(min = 64.dp)) {
                     Text("Remove", style = MaterialTheme.typography.labelLarge)
                 }
             }
@@ -124,7 +126,10 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
             }
         }
 
-        Section("What your family was told")
+        Section(if (ui.paired) "What your family was told" else "What Guardian did on this phone")
+        if (!ui.paired) {
+            Text("No one is linked to this phone, so none of this left it.", style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)
+        }
         if (ui.shared.isEmpty()) {
             Text("None so far.", style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)
         }
@@ -228,7 +233,8 @@ private fun FeatureCard(item: SharingItem, onToggle: ((Boolean) -> Unit)?) {
                     checked = item.enabled,
                     onCheckedChange = onToggle,
                     colors = SwitchDefaults.colors(checkedTrackColor = Guardian.colors.calm),
-                    modifier = Modifier.semantics {
+                    // The switch itself is small, so pad it out to the 64 dp the spec asks for.
+                    modifier = Modifier.sizeIn(minWidth = 64.dp, minHeight = 64.dp).semantics {
                         contentDescription = item.title
                         stateDescription = if (item.enabled) "On" else "Off"
                     },
