@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Content() {
         val state by container.store.state.collectAsStateWithLifecycle()
+        val requests by container.cloud.pendingRequests.collectAsStateWithLifecycle()
         var now by remember { mutableStateOf(ZonedDateTime.now()) }
         LaunchedEffect(Unit) {
             while (true) {
@@ -156,7 +157,7 @@ class MainActivity : ComponentActivity() {
                     actions = transparencyActions,
                 )
                 else -> HomeScreen(
-                    ui = HomeModel.build(state, now, ::appLabel, needsAttention),
+                    ui = HomeModel.build(state, now, ::appLabel, needsAttention, requests),
                     now = now,
                     actions = homeActions,
                 )
@@ -205,6 +206,10 @@ class MainActivity : ComponentActivity() {
         override fun onReminders() { destination = DEST_REMINDERS }
         override fun onHelperDecision(uid: String, approve: Boolean) {
             lifecycleScope.launch { runCatching { container.cloud.approveHelper(uid, approve) } }
+        }
+        override fun onRequestDecision(id: String, approve: Boolean) {
+            val request = container.cloud.pendingRequests.value.firstOrNull { it.id == id } ?: return
+            lifecycleScope.launch { runCatching { container.cloud.answerRequest(request, approve) } }
         }
     }
 
