@@ -1,6 +1,7 @@
 package app.guardianmode.device
 
 import android.content.Intent
+import android.provider.MediaStore
 import android.telecom.TelecomManager
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -38,8 +39,8 @@ class HomeDeviceTest {
             else -> "Good evening"
         }
         // Solo: no name yet, so the greeting is just the time of day.
-        assertWithMessage("greeting").that(rule.has(By.text(greeting))).isTrue()
-        assertThat(rule.has(By.text("Welcome to your new home screen."))).isTrue()
+        assertWithMessage("greeting").that(rule.seen(By.text(greeting))).isTrue()
+        assertThat(rule.seen(By.text("Welcome to your new home screen."))).isTrue()
         assertThat(rule.waitFor(chip("Protected"))).isTrue()
         for (tile in listOf("Phone", "Messages", "Camera", "Photos", "Reminders", "Help")) {
             assertWithMessage("$tile tile").that(rule.scrollTo(By.desc(tile))).isTrue()
@@ -54,6 +55,13 @@ class HomeDeviceTest {
         assertWithMessage("Phone opens the dialer").that(rule.waitForPackage(dialer)).isTrue()
 
         for (tile in listOf("Messages", "Camera")) {
+            // CI's emulators run with -camera-back none, and some images then have no camera app
+            // at all; the tile can only open one if Android has one to open.
+            // (Asked through the shell: Guardian's own package visibility doesn't cover this intent.)
+            if (tile == "Camera" && "No activity found" in rule.shell("cmd package resolve-activity --brief -a ${MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA}")) {
+                Log.w(TAG, "GM-HOME-002: no camera app on this image; Camera tile not checked")
+                continue
+            }
             rule.goHome()
             rule.scrollAndTap(By.desc(tile))
             val left = rule.waitUntil { rule.topPackage() != rule.pkg }
@@ -66,7 +74,7 @@ class HomeDeviceTest {
             rule.goHome()
             rule.scrollAndTap(By.desc(tile))
             assertWithMessage("$tile opens \"$title\"").that(rule.waitText(title)).isTrue()
-            rule.device.pressBack()
+            rule.back()
             assertWithMessage("Back from $tile returns home").that(rule.waitFor(rule.shieldChip)).isTrue()
         }
     }
@@ -93,7 +101,7 @@ class HomeDeviceTest {
         rule.goHome()
         assertThat(rule.has(By.text("What my family can see"))).isFalse()
 
-        rule.scrollAndTap(By.text("All my apps").clickable(true))
+        rule.scrollAndTap(By.text("All my apps"))
         assertThat(rule.waitText("Your family hasn't added any apps yet.")).isTrue()
         rule.goHome()
         assertThat(rule.has(By.text("Your family hasn't added any apps yet."))).isFalse()
@@ -106,15 +114,15 @@ class HomeDeviceTest {
 
     @Test fun gm_home_010_allMyApps() {
         rule.goHome()
-        rule.scrollAndTap(By.text("All my apps").clickable(true))
+        rule.scrollAndTap(By.text("All my apps"))
         assertThat(rule.waitText("Your family hasn't added any apps yet.")).isTrue()
-        assertThat(rule.has(By.text("Phone settings"))).isTrue()
+        assertThat(rule.seen(By.text("Phone settings"))).isTrue()
 
         rule.setState(DeviceFixtures.familyState)
         rule.goHome()
-        rule.scrollAndTap(By.text("All my apps").clickable(true))
+        rule.scrollAndTap(By.text("All my apps"))
         assertThat(rule.waitText("Notes")).isTrue()
-        assertThat(rule.has(By.text("Phone settings"))).isTrue()
+        assertThat(rule.seen(By.text("Phone settings"))).isTrue()
         rule.tap("Notes")
         assertThat(rule.waitForPackage(StubApp.NOTES.packageName)).isTrue()
     }

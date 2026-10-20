@@ -11,7 +11,6 @@ import app.guardianmode.support.DeviceFixtures.SARAH
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceRule
 import app.guardianmode.support.DeviceRule.Companion.SAFE_WORD_HEADLINE
-import app.guardianmode.support.EmulatorConsole
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -80,17 +79,18 @@ class CallDeviceTest {
         rule.setState(DeviceFixtures.familyState)
         rule.answeredCall(UNKNOWN, talkMillis = 32_000)
         assertThat(rule.waitFor(safeWordCard)).isTrue()
-        assertThat(rule.has(By.text("If anyone said they're a grandchild or relative in trouble, ask for your family safe word before doing anything. Your real family will know it."))).isTrue()
+        assertThat(rule.seen(By.text("If anyone said they're a grandchild or relative in trouble, ask for your family safe word before doing anything. Your real family will know it."))).isTrue()
         assertWithMessage("word hidden until asked").that(rule.has(By.textContains("bluebird"))).isFalse()
-        assertThat(rule.has(By.text("Call Sarah"))).isTrue()
-        assertThat(rule.has(By.text("Call David"))).isTrue()
-        assertThat(rule.has(By.text("Everything's fine"))).isTrue()
+        assertThat(rule.seen(By.text("Call Sarah"))).isTrue()
+        assertThat(rule.seen(By.text("Call David"))).isTrue()
+        assertThat(rule.seen(By.text("Everything's fine"))).isTrue()
 
         rule.tap("Show our safe word")
         assertThat(rule.waitText("Your safe word is \"bluebird\"")).isTrue()
+        val tapped = System.currentTimeMillis()
         rule.tap("Call David")
-        assertThat(rule.waitUntil(10_000) { EmulatorConsole.hasCallWith(DAVID) }).isTrue()
         assertThat(rule.waitGone(safeWordCard)).isTrue()
+        assertWithMessage("a call to David").that(rule.placedCallTo(DAVID, tapped)).isTrue()
     }
 
     /** "Exactly 30 s" needs clock control; the 20-s and unanswered halves are covered. */

@@ -1,7 +1,5 @@
 package app.guardianmode.device
 
-import android.Manifest
-import android.provider.CallLog
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
@@ -47,14 +45,9 @@ class ScreeningDeviceTest {
         assertThat(rule.ring(UNKNOWN)).isTrue() // the call still comes in (state RINGING)...
         assertThat(rule.ringsAudibly()).isFalse() // ...without a ringtone
         rule.hangUp(UNKNOWN)
-        // It stays in the call log (read with the shell's permission, as adb would).
+        // It stays in the call log (read through the shell, as adb would).
         val logged = rule.waitUntil(10_000) {
-            rule.asShell(Manifest.permission.READ_CALL_LOG) {
-                rule.context.contentResolver.query(
-                    CallLog.Calls.CONTENT_URI, arrayOf(CallLog.Calls.NUMBER),
-                    "${CallLog.Calls.DATE} >= ?", arrayOf((before - 5_000).toString()), null,
-                )?.use { c -> generateSequence { if (c.moveToNext()) c.getString(0) else null }.any { it.filter(Char::isDigit).endsWith(UNKNOWN) } } ?: false
-            }
+            rule.callLog(before).any { (number, _) -> number.filter(Char::isDigit).endsWith(UNKNOWN) }
         }
         assertThat(logged).isTrue()
         assertThat(rule.ownLogcat()).doesNotContain("Screening failed")
@@ -90,7 +83,7 @@ class ScreeningDeviceTest {
         rule.openTransparency()
         rule.scrollAndTap(By.desc("Unknown caller screening"))
         assertThat(rule.waitUntil { rule.state.config.protection.callScreening.mode == ScreeningMode.OFF }).isTrue()
-        assertThat(rule.has(By.desc("Unknown caller screening"))).isTrue()
+        assertThat(rule.seen(By.desc("Unknown caller screening"))).isTrue()
         rule.goHome()
         assertRings(UNKNOWN)
 

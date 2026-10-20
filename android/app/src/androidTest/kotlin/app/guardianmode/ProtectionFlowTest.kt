@@ -72,9 +72,16 @@ class ProtectionFlowTest {
         }
         brain.onForeground("com.chase.sig.android", "Chase")
         assertThat(device.wait(Until.hasObject(By.text("Hold on a minute.")), TIMEOUT)).isTrue()
-        assertThat(device.hasObject(By.text("Call Sarah first"))).isTrue()
+        assertThat(scrollTo(By.text("Call Sarah first"))).isTrue()
+        // With "Call Sarah first" above it, the button can sit below the fold at large text.
+        assertThat(scrollTo(By.text("I'm fine, continue"))).isTrue()
         device.findObject(By.text("I'm fine, continue")).click()
-        Thread.sleep(500)
+        // The outcome is recorded on the brain's thread and then saved, so wait for it.
+        val end = System.currentTimeMillis() + TIMEOUT
+        while (System.currentTimeMillis() < end &&
+            container.store.current.sharedEvents.none { it.type.name == "PAUSE_CONTINUED" }) {
+            Thread.sleep(100)
+        }
         val shared = container.store.current.sharedEvents.map { it.type.name }
         assertThat(shared).containsAtLeast("PAUSE_SHOWN", "PAUSE_CONTINUED")
     }

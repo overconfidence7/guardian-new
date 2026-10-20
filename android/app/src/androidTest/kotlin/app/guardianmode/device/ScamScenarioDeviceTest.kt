@@ -13,7 +13,6 @@ import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceFixtures.UNKNOWN_2
 import app.guardianmode.support.DeviceRule
 import app.guardianmode.support.DeviceRule.Companion.SAFE_WORD_HEADLINE
-import app.guardianmode.support.EmulatorConsole
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -40,7 +39,7 @@ class ScamScenarioDeviceTest {
     private fun cardFor(app: StubApp, words: String) {
         rule.open(app)
         assertWithMessage("pause card for ${app.label}").that(rule.waitFor(rule.pauseCard)).isTrue()
-        assertThat(rule.has(By.textContains("never ask you to $words."))).isTrue()
+        assertThat(rule.seen(By.textContains("never ask you to $words."))).isTrue()
     }
 
     @Test fun gm_scam_001_microsoftSupport() {
@@ -64,7 +63,7 @@ class ScamScenarioDeviceTest {
 
         step("4. open the bank app")
         cardFor(StubApp.CHASE, "move money from your bank")
-        assertThat(rule.has(By.textContains("It's OK to hang up."))).isTrue()
+        assertThat(rule.seen(By.textContains("It's OK to hang up."))).isTrue()
         step("5. 'Tap continue, it's fine'")
         rule.tap("I'm fine, continue")
         step("6. open Zelle")
@@ -89,7 +88,7 @@ class ScamScenarioDeviceTest {
         val answeredAt = System.currentTimeMillis()
         step("2. open Target to buy gift cards")
         cardFor(StubApp.TARGET, "buy gift cards")
-        assertThat(rule.has(By.textContains("It's OK to hang up."))).isTrue()
+        assertThat(rule.seen(By.textContains("It's OK to hang up."))).isTrue()
         rule.tap("Go to my home screen")
         Thread.sleep((32_000 - (System.currentTimeMillis() - answeredAt)).coerceAtLeast(0))
         step("3. hang up")
@@ -97,8 +96,9 @@ class ScamScenarioDeviceTest {
         assertThat(rule.waitText(SAFE_WORD_HEADLINE)).isTrue()
         rule.tap("Show our safe word")
         assertThat(rule.waitText("Your safe word is \"bluebird\"")).isTrue()
+        val tapped = System.currentTimeMillis()
         rule.tap("Call David")
-        assertThat(rule.waitUntil(10_000) { EmulatorConsole.hasCallWith(DAVID) }).isTrue()
+        assertWithMessage("a call to David").that(rule.placedCallTo(DAVID, tapped)).isTrue()
     }
 
     @Test fun gm_scam_003_bankFraudDepartmentCallsBack() {
@@ -127,7 +127,7 @@ class ScamScenarioDeviceTest {
         step("2. screen on, open Coinbase")
         rule.wake()
         cardFor(StubApp.COINBASE, "send crypto or Bitcoin")
-        assertThat(rule.has(By.textContains("It's OK to hang up."))).isTrue()
+        assertThat(rule.seen(By.textContains("It's OK to hang up."))).isTrue()
         rule.hangUp(UNKNOWN)
     }
 
@@ -144,20 +144,20 @@ class ScamScenarioDeviceTest {
             rule.openTransparency()
             rule.tap("Pause everything for 1 hour")
             assertWithMessage("$level pause asks for the code").that(rule.codeAsked()).isTrue()
-            rule.device.pressBack()
+            rule.back()
 
             step("$level 3. shield > Pause before sending money off")
             rule.openTransparency()
             rule.scrollAndTap(By.desc("Pause before sending money"))
             assertWithMessage("$level switch asks for the code").that(rule.codeAsked()).isTrue()
-            rule.device.pressBack()
+            rule.back()
 
             step("$level 4. shield > Stop using Guardian Mode")
             rule.openTransparency()
-            rule.scrollAndTap(By.text("Stop using Guardian Mode").clickable(true))
+            rule.scrollAndTap(By.text("Stop using Guardian Mode"))
             rule.tap("Stop")
             assertWithMessage("$level stop asks for the code").that(rule.codeAsked()).isTrue()
-            rule.device.pressBack()
+            rule.back()
 
             assertThat(rule.state.isPaused(System.currentTimeMillis())).isFalse()
             assertThat(rule.state.config.protection.pauseTripwires.enabled).isTrue()
@@ -172,7 +172,7 @@ class ScamScenarioDeviceTest {
                     step("$level 5/6. $route")
                     rule.shell(route)
                     assertWithMessage("$route covered").that(rule.waitFor(rule.lockedCard("Settings"))).isTrue()
-                    rule.device.pressBack()
+                    rule.back()
                 }
             }
             rule.goHome()

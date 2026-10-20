@@ -43,7 +43,7 @@ class TransparencyDeviceTest {
         rule.goHome()
         rule.find(rule.shieldChip).click()
         assertThat(rule.waitText("What my family can see")).isTrue()
-        assertThat(rule.has(By.text("Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off."))).isTrue()
+        assertThat(rule.seen(By.text("Guardian Mode shares a few safety notes with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off."))).isTrue()
     }
 
     @Test fun gm_tran_004_switchesFlipAndAreSaved() {
@@ -59,7 +59,7 @@ class TransparencyDeviceTest {
             for (want in listOf(false, true)) {
                 rule.scrollAndTap(By.desc(title))
                 assertWithMessage("$title -> $want").that(rule.waitUntil { isOn(rule.state) == want }).isTrue()
-                assertWithMessage("$title switch shows $want").that(rule.waitUntil { rule.device.findObject(By.desc(title))?.isChecked == want }).isTrue()
+                assertWithMessage("$title switch shows $want").that(rule.waitUntil { rule.switchOn(title) == want }).isTrue()
                 // Written to disk, so it survives the process restarting.
                 assertWithMessage("$title saved as $want").that(rule.waitUntil { isOn(savedState()) == want }).isTrue()
             }
@@ -74,7 +74,7 @@ class TransparencyDeviceTest {
         assertThat(rule.waitText("Turn protection back on")).isTrue()
         val until = rule.state.pausedUntil
         assertThat(until - System.currentTimeMillis()).isIn(com.google.common.collect.Range.closed(58 * 60_000L, 60 * 60_000L))
-        assertWithMessage("Paused until h:mm a").that(pausedUntilTexts(until).any { rule.has(By.text(it)) }).isTrue()
+        assertWithMessage("Paused until h:mm a").that(pausedUntilTexts(until).any { rule.seen(By.text(it)) }).isTrue()
 
         val n = rule.waitUntil { rule.protectionNotification()?.notification?.extras?.getString("android.title") == "Guardian Mode is paused" }
         assertThat(n).isTrue()

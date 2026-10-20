@@ -9,7 +9,6 @@ import app.guardianmode.support.DeviceFixtures.SARAH
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceFixtures.UNKNOWN_2
 import app.guardianmode.support.DeviceRule
-import app.guardianmode.support.EmulatorConsole
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -49,7 +48,7 @@ class RobustnessDeviceTest {
         val shown = listOf(0L, 60_000L).map {
             "Paused until " + java.time.Instant.ofEpochMilli(until - it).atZone(zone).format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()))
         }
-        assertWithMessage("pause end in $target time").that(rule.waitUntil(12_000) { shown.any { s -> rule.has(By.text(s)) } }).isTrue()
+        assertWithMessage("pause end in $target time").that(rule.waitUntil(12_000) { shown.any { s -> rule.seen(By.text(s)) } }).isTrue()
     }
 
     @Test fun gm_rob_013_rapidTapsDontDoubleAct() {
@@ -59,19 +58,22 @@ class RobustnessDeviceTest {
         rule.answeredCall(UNKNOWN, talkMillis = 3_000)
         rule.open(StubApp.CHASE)
         assertThat(rule.waitFor(rule.pauseCard)).isTrue()
+        assertThat(rule.seen(By.text("Call Sarah first"))).isTrue()
         val call = rule.find(By.text("Call Sarah first")).visibleCenter
+        val tapped = System.currentTimeMillis()
         repeat(2) { rule.device.click(call.x, call.y) }
-        assertThat(rule.waitUntil(10_000) { EmulatorConsole.hasCallWith(SARAH) }).isTrue()
         Thread.sleep(3_000)
         assertThat(rule.events(EventType.PAUSE_CALLED_FAMILY)).hasSize(1)
-        assertThat(EmulatorConsole.activeNumbers().count { it.filter(Char::isDigit).endsWith(SARAH) }).isEqualTo(1)
-        rule.hangUpEverything()
+        assertWithMessage("a call to Sarah").that(rule.placedCallTo(SARAH, tapped)).isTrue()
+        Thread.sleep(2_000)
+        assertWithMessage("calls to Sarah placed").that(rule.dialedCount(SARAH, tapped)).isEqualTo(1)
         Thread.sleep(DeviceRule.SETTLE)
 
         // "I'm fine, continue", triple-tapped.
         rule.answeredCall(UNKNOWN_2, talkMillis = 3_000)
         rule.open(StubApp.VENMO)
         assertThat(rule.waitFor(rule.pauseCard)).isTrue()
+        assertThat(rule.seen(By.text("I'm fine, continue"))).isTrue()
         val cont = rule.find(By.text("I'm fine, continue")).visibleCenter
         repeat(3) { rule.device.click(cont.x, cont.y) }
         Thread.sleep(2_000)
@@ -81,11 +83,12 @@ class RobustnessDeviceTest {
         // "Unlock", double-tapped.
         rule.setLock(LockLevel.GUIDED)
         rule.goHome()
-        rule.scrollAndTap(By.text("All my apps").clickable(true))
+        rule.scrollAndTap(By.text("All my apps"))
         val field = rule.find(By.desc("Lock code"))
         field.click()
         field.text = DeviceFixtures.CODE
-        if (!rule.has(By.text("Unlock"))) rule.device.pressBack()
+        rule.hideKeyboard()
+        assertThat(rule.seen(By.text("Unlock"))).isTrue()
         val unlock = rule.find(By.text("Unlock")).visibleCenter
         repeat(2) { rule.device.click(unlock.x, unlock.y) }
         assertThat(rule.waitText("Your family hasn't added any apps yet.")).isTrue()

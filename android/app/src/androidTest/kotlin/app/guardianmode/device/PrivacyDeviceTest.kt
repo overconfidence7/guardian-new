@@ -171,7 +171,7 @@ class PrivacyDeviceTest {
             rule.context.startActivity(share)
             assertThat(rule.waitText("Added to your photo card", 30_000)).isTrue()
             assertThat(rule.state.localPhotos.size).isAtMost(30)
-            assertThat(rule.has(By.text("The 30 pictures are on your home screen now."))).isTrue()
+            assertThat(rule.seen(By.text("The 30 pictures are on your home screen now."))).isTrue()
         } finally {
             uris.forEach { runCatching { resolver.delete(it, null, null) } }
         }

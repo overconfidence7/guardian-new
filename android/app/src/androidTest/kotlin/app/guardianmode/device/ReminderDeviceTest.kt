@@ -1,8 +1,11 @@
 package app.guardianmode.device
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.content.Intent
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import app.guardianmode.core.EventType
 import app.guardianmode.reminders.ReminderReceiver
@@ -31,7 +34,9 @@ import java.util.Locale
 class ReminderDeviceTest {
     @get:Rule val rule = DeviceRule()
 
-    private val title = By.text("Blood pressure pill")
+    private val title = By.pkg(InstrumentationRegistry.getInstrumentation().targetContext.packageName).text("Blood pressure pill")
+    /** Only the card has these (the notification and the home screen's strip show the title too). */
+    private val cardButtons = By.text("Remind me in 10 minutes")
 
     /** Schedules the pill reminder at the next whole minute at least 20 s away; returns when it should fire. */
     private fun reminderSoon(notifyFamilyIfMissed: Boolean = true): Long {
@@ -59,11 +64,11 @@ class ReminderDeviceTest {
     @Test fun gm_help_020_reminderCardOnTime() {
         val at = reminderSoon()
         assertWithMessage("reminder card").that(waitForCard(at)).isNotNull()
-        assertThat(rule.has(title)).isTrue()
-        assertThat(rule.has(By.text("One white tablet with water"))).isTrue()
-        assertThat(rule.has(By.text("Done"))).isTrue()
+        assertThat(rule.seen(title)).isTrue()
+        assertThat(rule.seen(By.text("One white tablet with water"))).isTrue()
+        assertThat(rule.seen(By.text("Done"))).isTrue()
         val shown = java.time.Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault()))
-        assertThat(rule.has(By.text(shown))).isTrue()
+        assertThat(rule.seen(By.text(shown))).isTrue()
     }
 
     /** Spec: the parent sees the reminder without unlocking, or at least a notification on the lock screen (S-16). */
@@ -78,7 +83,8 @@ class ReminderDeviceTest {
         }
         assertWithMessage("reminder notification posted").that(posted).isTrue()
         rule.shell("input keyevent KEYCODE_WAKEUP") // screen on, still locked
-        assertWithMessage("visible without unlocking").that(rule.waitFor(title)).isTrue()
+        // The card or the lock-screen notification: either counts here.
+        assertWithMessage("visible without unlocking").that(rule.waitFor(By.text("Blood pressure pill"))).isTrue()
         Log.i(TAG, "GM-HELP-021 locked: top=${rule.topPackage()} card=${rule.has(By.text("Remind me in 10 minutes"))}")
     }
 
@@ -88,7 +94,7 @@ class ReminderDeviceTest {
         assertThat(rule.waitForPackage(StubApp.NOTES.packageName)).isTrue()
         assertThat(waitForCard(at)).isNotNull()
         assertThat(rule.topPackage()).isEqualTo(rule.pkg)
-        rule.device.pressBack()
+        rule.back()
         assertThat(rule.waitForPackage(StubApp.NOTES.packageName)).isTrue()
     }
 
@@ -96,13 +102,15 @@ class ReminderDeviceTest {
         val at = reminderSoon()
         assertThat(waitForCard(at)).isNotNull()
         rule.tap("Done")
-        assertThat(rule.waitGone(title)).isTrue()
+        assertThat(rule.waitGone(cardButtons)).isTrue()
         assertThat(rule.waitUntil { "r1@$at" in rule.state.remindersDone }).isTrue()
+        // "Done" also clears the reminder's notification.
+        assertThat(rule.waitUntil { reminderNotification() == null }).isTrue()
 
         rule.goHome()
         rule.scrollAndTap(By.desc("Reminders"))
         assertThat(rule.waitText("Today's reminders")).isTrue()
-        assertThat(rule.has(By.desc("Done"))).isTrue()
+        assertWithMessage("today's list marks it done").that(rule.seen(By.desc("Done"))).isTrue()
 
         sendMissedCheck(at)
         Thread.sleep(2_000)
@@ -114,7 +122,9 @@ class ReminderDeviceTest {
         val at = reminderSoon()
         assertThat(waitForCard(at)).isNotNull()
         rule.tap("Remind me in 10 minutes")
-        assertThat(rule.waitGone(title)).isTrue()
+        // The card closes (its notification stays in the shade until it's done, by design).
+        assertThat(rule.waitGone(cardButtons)).isTrue()
+        Thread.sleep(1_000)
         assertThat(rule.state.remindersDone).isEmpty()
     }
 
@@ -122,6 +132,9 @@ class ReminderDeviceTest {
         val at = reminderSoon(notifyFamilyIfMissed = true)
         assertThat(waitForCard(at)).isNotNull()
         rule.goHome() // ignore it
+        // ...and swipe its notification away, as a parent ignoring it would, so its heads-up
+        // banner doesn't sit over the home screen's shield chip.
+        reminderNotification()?.let { rule.context.getSystemService(NotificationManager::class.java).cancel(it.id) }
 
         sendMissedCheck(at)
         val missed = rule.waitForEvent(EventType.REMINDER_MISSED)
@@ -130,6 +143,9 @@ class ReminderDeviceTest {
         rule.openTransparency()
         assertThat(rule.scrollTo(By.text("\"Blood pressure pill\" wasn't marked done."))).isTrue()
     }
+
+    private fun reminderNotification() = rule.context.getSystemService(NotificationManager::class.java).activeNotifications
+        .firstOrNull { it.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() == "Blood pressure pill" }
 
     /** The check ReminderScheduler.scheduleMissedCheck set for an hour after the reminder, delivered now. */
     private fun sendMissedCheck(at: Long) {

@@ -9,7 +9,6 @@ import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceFixtures.SARAH
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceRule
-import app.guardianmode.support.EmulatorConsole
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -44,10 +43,10 @@ class RemoteAccessDeviceTest {
     @Test fun gm_racc_001_gm_perf_005_installingAnyDeskWarnsWithinFiveSeconds() {
         val t = installAndTime(StubApp.ANYDESK, anyDeskWarning)
         assertWithMessage("install warning").that(t).isNotNull()
-        assertThat(rule.has(By.text("Real companies like Microsoft, Apple, Amazon or your bank never ask you to install an app like this over the phone."))).isTrue()
-        assertThat(rule.has(By.text("If someone on the phone asked you to install it, it's OK to hang up."))).isTrue()
-        assertThat(rule.has(By.text("Remove AnyDesk"))).isTrue()
-        assertThat(rule.has(By.text("I trust this app"))).isTrue()
+        assertThat(rule.seen(By.text("Real companies like Microsoft, Apple, Amazon or your bank never ask you to install an app like this over the phone."))).isTrue()
+        assertThat(rule.seen(By.text("If someone on the phone asked you to install it, it's OK to hang up."))).isTrue()
+        assertThat(rule.seen(By.text("Remove AnyDesk"))).isTrue()
+        assertThat(rule.seen(By.text("I trust this app"))).isTrue()
         val event = rule.waitForEvent(EventType.REMOTE_ACCESS_INSTALLED)!!
         assertThat(event.severity).isEqualTo(Severity.URGENT)
         assertThat(event.data).containsAtLeast("app", "AnyDesk", "afterUnknownCall", "false")
@@ -62,7 +61,7 @@ class RemoteAccessDeviceTest {
         trust()
         rule.open(StubApp.CHASE)
         assertThat(rule.waitFor(rule.pauseCard)).isTrue()
-        assertThat(rule.has(By.textContains("It's OK to hang up."))).isTrue()
+        assertThat(rule.seen(By.textContains("It's OK to hang up."))).isTrue()
         rule.hangUp(UNKNOWN)
     }
 
@@ -102,7 +101,7 @@ class RemoteAccessDeviceTest {
         val installers = setOf("com.android.packageinstaller", "com.google.android.packageinstaller")
         assertThat(rule.waitUntil { rule.topPackage() in installers }).isTrue()
         Log.i(TAG, "GM-RACC-006 uninstall dialog package: ${rule.topPackage()}")
-        assertThat(rule.has(By.textContains("AnyDesk"))).isTrue()
+        assertThat(rule.seen(By.textContains("AnyDesk"))).isTrue()
         rule.tap("OK")
         assertThat(rule.waitUntil(10_000) { !rule.isInstalled(StubApp.ANYDESK) }).isTrue()
         // At Locked, docs/SPEC.md F13 says the package installer is covered too, which the
@@ -118,9 +117,10 @@ class RemoteAccessDeviceTest {
     @Test fun gm_racc_008_callSarahDialsSarahAndClosesWarning() {
         rule.setState(DeviceFixtures.familyState)
         assertThat(installAndTime(StubApp.ANYDESK, anyDeskWarning)).isNotNull()
+        val tapped = System.currentTimeMillis()
         rule.tap("Call Sarah")
-        assertThat(rule.waitUntil(10_000) { EmulatorConsole.hasCallWith(SARAH) }).isTrue()
         assertThat(rule.waitGone(anyDeskWarning)).isTrue()
+        assertWithMessage("a call to Sarah").that(rule.placedCallTo(SARAH, tapped)).isTrue()
     }
 
     @Test fun gm_racc_009_appsAlreadyThereNeverAlarmOnInstallButStillWarnOnOpen() {
@@ -156,7 +156,7 @@ class RemoteAccessDeviceTest {
     @Test fun gm_racc_012_appThatCanControlTheScreenGetsMilderWarning() {
         val warning = By.text("Screen Helper asks to control your screen.")
         assertThat(installAndTime(StubApp.SCREEN_HELPER, warning)).isNotNull()
-        assertThat(rule.has(By.text("Remove Screen Helper"))).isTrue()
+        assertThat(rule.seen(By.text("Remove Screen Helper"))).isTrue()
         val event = rule.waitForEvent(EventType.CONTROL_APP_INSTALLED)!!
         assertThat(event.severity).isEqualTo(Severity.NOTICE)
         assertThat(event.data).containsAtLeast("app", "Screen Helper", "afterUnknownCall", "false")

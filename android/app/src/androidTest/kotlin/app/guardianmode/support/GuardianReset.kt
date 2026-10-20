@@ -1,10 +1,12 @@
 package app.guardianmode.support
 
 import app.guardianmode.AppContainer
+import app.guardianmode.core.CallSession
 import app.guardianmode.core.PhoneCallState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Forgets what Guardian's rule engine remembers in memory between tests.
@@ -45,6 +47,30 @@ object GuardianReset {
                 (get(get(brain, "screening"), "recentUnknown") as MutableCollection<*>).clear()
                 set(brain, "callActive", false)
             }
+        }
+    }
+
+    /** What the brain remembers right now (read on its own thread), for failure reports. Numbers are cut to their last 4 digits. */
+    fun describe(container: AppContainer): String {
+        val brain = container.brain
+        val serial = get(brain, "serial") as CoroutineDispatcher
+        return runBlocking {
+            withTimeoutOrNull(2_000) {
+                withContext(serial) {
+                    val engine = get(brain, "engine")
+                    val tracker = get(brain, "tracker")
+                    fun session(s: Any?): String = (s as? CallSession)?.let {
+                        "${it.number?.takeLast(4)}/unknown=${it.unknown}/in=${it.incoming}/answered=${it.answered}/ended=${it.endedAt != null}"
+                    } ?: "none"
+                    val screened = field(tracker, "pendingScreen").get(tracker)
+                    "callActive=${get(brain, "callActive")} tracker.lastState=${get(tracker, "lastState")} " +
+                        "tracker.current=${session(field(tracker, "current").get(tracker))} pendingScreen=${screened?.toString()?.replace(Regex("\\d{6,}")) { it.value.takeLast(4) }} " +
+                        "engine.activeUnknown=${session(field(engine, "activeUnknown").get(engine))} " +
+                        "lastUnknownEnded=${(field(engine, "lastUnknownCallEndedAt").get(engine) as Long?)?.let { "${(System.currentTimeMillis() - it) / 1000}s ago" }} " +
+                        "front=${field(engine, "foregroundPackage").get(engine)} shownAt=${(get(engine, "pauseShownAt") as Map<*, *>).keys} " +
+                        "continued=${get(engine, "continuedPackages")} armed=${brain.isArmed()}"
+                }
+            } ?: "brain busy"
         }
     }
 

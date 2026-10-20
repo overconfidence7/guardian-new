@@ -8,8 +8,13 @@ import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.media.AudioManager
 import android.os.Process
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.provider.ContactsContract
 import android.util.Log
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -80,7 +85,12 @@ class DeviceRule(
         device.waitForIdle()
     }
 
-    override fun failed(e: Throwable, description: Description) = dumpUi("${description.methodName} failed")
+    override fun failed(e: Throwable, description: Description) {
+        dumpUi("${description.methodName} failed")
+        // One line per failure that CI turns into an annotation (qa/daily/run-device-suite.sh).
+        runCatching { Log.i(DIAG, "${description.className.substringAfterLast('.')}.${description.methodName}: ${diagnostics()}") }
+            .onFailure { Log.w(DIAG, "${description.methodName}: diagnostics failed: $it") }
+    }
 
     override fun finished(description: Description) {
         runCatching { hangUpEverything() }
@@ -230,8 +240,14 @@ class DeviceRule(
      */
     fun open(app: StubApp) {
         requireStub(app)
+        trace("opening ${app.label}")
         lastOpenAt = System.currentTimeMillis()
         shell("am start -n ${app.component} -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
+    }
+
+    /** A line in logcat (tag GuardianTrace) with what the brain remembers, for reading a failed run afterwards. */
+    fun trace(what: String) {
+        runCatching { Log.i(TRACE, "$what: top=${topPackage()} callState=${callState()} ${GuardianReset.describe(container)}") }
     }
 
     /** When the last [open] sent its start command; latencies are measured from here. */
@@ -272,6 +288,7 @@ class DeviceRule(
         answer(number)
         check(waitForCallState(2)) { "Call from $number wasn't answered" }
         Thread.sleep(SETTLE) // let PhoneStateReceiver hand OFFHOOK to the brain
+        trace("answered ${number.takeLast(4)}")
     }
 
     /** A real incoming call through the emulator's telephony, answered and kept up for [talkMillis]. */
@@ -290,6 +307,7 @@ class DeviceRule(
         runCatching { EmulatorConsole.hangUp(number) }
         if (!waitForCallState(0)) hangUpEverything()
         Thread.sleep(SETTLE) // let PhoneStateReceiver hand IDLE to the brain
+        trace("hung up ${number.takeLast(4)}")
     }
 
     /** The parent places a call (as `am start -a android.intent.action.CALL` from adb). */
@@ -346,6 +364,42 @@ class DeviceRule(
         return false
     }
 
+
+    /**
+     * Calls in the phone's call log since [sinceMs], newest first, as (number, type) where
+     * type 1 is incoming, 2 outgoing, 3 missed. Read with the shell's `content` tool, as adb
+     * would: the test process runs as Guardian, which has no call-log permission (and on
+     * Android 10 the provider also checks Guardian's own app-op, so borrowing the shell's
+     * permission isn't enough).
+     */
+    fun callLog(sinceMs: Long): List<Pair<String, Int>> =
+        Regex("number=([^,]*), type=(\\d+), date=(\\d+)")
+            .findAll(shell("content query --uri content://call_log/calls --projection number:type:date"))
+            .filter { it.groupValues[3].toLong() >= sinceMs - 2_000 }
+            .sortedByDescending { it.groupValues[3].toLong() }
+            .map { it.groupValues[1] to it.groupValues[2].toInt() }
+            .toList()
+
+    /** Outgoing calls to [number] (any formatting) logged since [sinceMs]. */
+    fun dialedCount(number: String, sinceMs: Long): Int {
+        val want = number.filter(Char::isDigit).takeLast(10)
+        return callLog(sinceMs).count { (n, type) -> type == CALL_OUTGOING && n.filter(Char::isDigit).endsWith(want) }
+    }
+
+    /**
+     * True when the phone placed a call to [number] since [sinceMs]. The emulator's modem
+     * doesn't reliably list calls the phone places (`gsm list`), so this waits for the call
+     * to start (modem or telephony off-hook), ends every call so the call log is written,
+     * and reads the call log.
+     */
+    fun placedCallTo(number: String, sinceMs: Long, timeoutMs: Long = 15_000): Boolean {
+        waitUntil(timeoutMs) { EmulatorConsole.available && EmulatorConsole.hasCallWith(number) || callState() == 2 || dialedCount(number, sinceMs) > 0 }
+        hangUpEverything()
+        val placed = waitUntil(10_000) { dialedCount(number, sinceMs) > 0 }
+        if (!placed) Log.w(TAG, "no outgoing call to $number logged; call log since start: ${callLog(sinceMs)}")
+        return placed
+    }
+
     // ---- Screen ----
 
     fun has(selector: BySelector): Boolean = runCatching { device.hasObject(selector) }.getOrDefault(false)
@@ -379,26 +433,129 @@ class DeviceRule(
         }
     }
 
-    fun tap(text: String) = find(By.text(text)).click()
-    fun tapDesc(desc: String) = find(By.desc(desc)).click()
+    /**
+     * Taps what [selector] matches the way a person would: the keyboard is put away first
+     * (it covers the bottom of the screen, and UiAutomator still reports what's under it),
+     * then the screen is scrolled until the target shows. Compose puts a button's text on a
+     * child of the clickable node, so when several nodes match, the one inside a clickable
+     * one wins (the "Stop using Guardian Mode" heading vs. its button).
+     */
+    fun tapOn(selector: BySelector) {
+        waitFor(selector, 3_000)
+        hideKeyboard()
+        check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
+        var matches = device.findObjects(selector)
+        // Only a heading with the same words in view: the button is further down.
+        repeat(3) {
+            if (matches.any { insideClickable(it) }) return@repeat
+            scrollOnce(Direction.DOWN)
+            matches = device.findObjects(selector)
+        }
+        val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
+            ?: error("Nothing on screen matches $selector")
+        target.click()
+        device.waitForIdle()
+    }
+
+    fun tap(text: String) = tapOn(By.text(text))
+    fun tapDesc(desc: String) = tapOn(By.desc(desc))
+
+    private fun insideClickable(obj: UiObject2): Boolean = runCatching {
+        var node: UiObject2? = obj
+        repeat(4) {
+            val n = node ?: return@runCatching false
+            if (n.isClickable || n.isCheckable) return@runCatching true
+            node = n.parent
+        }
+        false
+    }.getOrDefault(false)
+
+    /**
+     * True when [selector] is on screen or comes into view by scrolling (down first, then
+     * back up). Cards and pages scroll, and at the large text size the lower buttons start
+     * below the fold, where UiAutomator doesn't report them.
+     */
+    fun seen(selector: BySelector, waitMs: Long = 2_000): Boolean {
+        if (waitFor(selector, waitMs)) return true
+        repeat(6) {
+            scrollOnce(Direction.DOWN)
+            if (has(selector)) return true
+        }
+        repeat(12) {
+            scrollOnce(Direction.UP)
+            if (has(selector)) return true
+        }
+        return false
+    }
+
+    private fun scrollOnce(direction: Direction) {
+        val scrollable = runCatching { device.findObject(By.scrollable(true)) }.getOrNull()
+        if (scrollable != null) {
+            runCatching { scrollable.scroll(direction, 0.6f) }
+        } else {
+            val x = device.displayWidth / 2
+            val (from, to) = device.displayHeight * 3 / 4 to device.displayHeight / 4
+            if (direction == Direction.DOWN) device.swipe(x, from, x, to, 20) else device.swipe(x, to, x, from, 20)
+        }
+        device.waitForIdle(500)
+    }
+
+    /**
+     * Whether the switch described as [desc] shows on, read from the accessibility tree:
+     * the checked state of the switch node (or a checkable node right around it), else the
+     * "On"/"Off" state text Guardian gives it. Null when no such switch is on screen.
+     */
+    fun switchOn(desc: String): Boolean? {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
+        val node = findNode(root) { it.contentDescription?.toString() == desc } ?: return null
+        val checkable = sequenceOf(node, node.parent, node.parent?.parent).filterNotNull().firstOrNull { it.isCheckable }
+            ?: findNode(node, maxDepth = 3) { it.isCheckable }
+        if (checkable != null) return checkable.isChecked
+        return when (AccessibilityNodeInfoCompat.wrap(node).stateDescription?.toString()) {
+            "On" -> true
+            "Off" -> false
+            else -> null
+        }
+    }
+
+    private fun findNode(node: AccessibilityNodeInfo, maxDepth: Int = 40, match: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        if (match(node)) return node
+        if (maxDepth == 0) return null
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findNode(child, maxDepth - 1, match)?.let { return it }
+        }
+        return null
+    }
+
+    /** True while the on-screen keyboard is up. */
+    fun keyboardShown(): Boolean {
+        val windows = runCatching { instrumentation.uiAutomation.windows }.getOrDefault(emptyList())
+        if (windows.isNotEmpty()) return windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        return shell("dumpsys input_method").contains("mInputShown=true")
+    }
+
+    /** Puts the keyboard away if it's up (Back with the keyboard up only closes the keyboard). */
+    fun hideKeyboard() {
+        if (!keyboardShown()) return
+        device.pressBack()
+        waitUntil(2_000) { !keyboardShown() }
+    }
+
+    /** Back, as the parent means it: the keyboard goes away first if it's up, then the screen goes back. */
+    fun back() {
+        hideKeyboard()
+        device.pressBack()
+        device.waitForIdle()
+    }
 
     fun topPackage(): String = device.currentPackageName ?: ""
 
     fun waitForPackage(packageName: String, timeoutMs: Long = TIMEOUT) = waitUntil(timeoutMs) { topPackage() == packageName }
 
-    fun scrollTo(selector: BySelector): Boolean {
-        repeat(8) {
-            if (waitFor(selector, 800)) return true
-            device.findObject(By.scrollable(true))?.scroll(Direction.DOWN, 0.7f)
-                ?: device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 20)
-        }
-        return has(selector)
-    }
+    fun scrollTo(selector: BySelector): Boolean = seen(selector, 800)
 
-    fun scrollAndTap(selector: BySelector) {
-        check(scrollTo(selector)) { dumpUi("can't scroll to $selector"); "Couldn't scroll to $selector" }
-        device.findObject(selector).click()
-    }
+    fun scrollAndTap(selector: BySelector) = tapOn(selector)
 
     /** Dismisses the safe-word card that follows a real conversation with an unknown number. */
     fun dismissSafeWordCard() {
@@ -407,11 +564,14 @@ class DeviceRule(
         device.waitForIdle()
     }
 
-    /** The full-screen pause card's headline. */
-    val pauseCard: BySelector get() = By.text(PAUSE_HEADLINE)
+    // Card selectors are pinned to Guardian's own windows: a heads-up notification carries
+    // the same words ("Settings is locked") and must not count as the card itself.
 
-    fun lockedCard(appLabel: String): BySelector = By.text("$appLabel is locked")
-    val anyLockedCard: BySelector get() = By.textEndsWith(" is locked")
+    /** The full-screen pause card's headline. */
+    val pauseCard: BySelector get() = By.pkg(pkg).text(PAUSE_HEADLINE)
+
+    fun lockedCard(appLabel: String): BySelector = By.pkg(pkg).text("$appLabel is locked")
+    val anyLockedCard: BySelector get() = By.pkg(pkg).textEndsWith(" is locked")
 
     // ---- Guardian's own screens ----
 
@@ -425,9 +585,15 @@ class DeviceRule(
     fun chipLabel(): String? = device.findObject(shieldChip)?.contentDescription?.substringBefore(".")
 
     fun openTransparency() {
-        goHome()
-        find(shieldChip).click()
-        check(waitText("What my family can see")) { "Transparency screen didn't open" }
+        // A heads-up notification can sit over the chip for a few seconds, so try again once it's gone.
+        repeat(3) { attempt ->
+            goHome()
+            find(shieldChip).click()
+            if (waitText("What my family can see", if (attempt < 2) 5_000 else TIMEOUT)) return
+            Log.w(TAG, "transparency screen didn't open (try ${attempt + 1}); top=${topPackage()}")
+        }
+        dumpUi("transparency screen didn't open")
+        error("Transparency screen didn't open")
     }
 
     /** Types the lock code on whichever code screen is up and taps Unlock. */
@@ -436,14 +602,12 @@ class DeviceRule(
         field.click()
         field.text = code
         device.waitForIdle()
-        if (!has(By.text("Unlock"))) device.pressBack() // hide the keyboard if it covers the button
-        tap("Unlock")
+        tap("Unlock") // puts the keyboard away first
         val accepted = { state.unlockedUntil > System.currentTimeMillis() || !has(By.desc("Lock code")) }
         if (code == DeviceFixtures.CODE && !waitUntil(3_000, accepted)) {
             // Fall back to real key presses if ACTION_SET_TEXT didn't reach the Compose field.
             find(By.desc("Lock code")).click()
             shell("input text $code")
-            if (!has(By.text("Unlock"))) device.pressBack()
             tap("Unlock")
         }
     }
@@ -503,6 +667,37 @@ class DeviceRule(
     /** Guardian's own log lines (this process), as `adb logcat --pid` would show them. */
     fun ownLogcat(): String = shell("logcat -d -v brief --pid=${Process.myPid()}")
 
+    /** What the test and Guardian see right now, on one line, for failure reports. */
+    fun diagnostics(): String = buildString {
+        val now = System.currentTimeMillis()
+        append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} ")
+        append("screenOn=${isScreenOn()} keyboard=${keyboardShown()} ")
+        append("gsm=[${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}] ")
+        append("brain{${runCatching { GuardianReset.describe(container) }.getOrElse { "?$it" }}} ")
+        append("shared=${sharedTypes()} paused=${state.isPaused(now)} lock=${state.config.lock.level}/${if (state.lockCodeHash.isEmpty()) "no code" else "code"} ")
+        append("missing=${runCatching { container.capabilities.missing().map { it.key } }.getOrDefault(emptyList())} ")
+        append("resumedEvents=${recentResumes(30_000)} ")
+        append("calls=${runCatching { callLog(now - 120_000) }.getOrDefault(emptyList()).map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
+        val log = ownLogcat().lines().filter { line ->
+            DIAG_TAGS.any { "$it" in line } && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
+        }.takeLast(8)
+        append("log=$log")
+    }
+
+    /** Apps brought to the front in the last [windowMs], as Usage access reports them to Guardian. */
+    fun recentResumes(windowMs: Long): List<String> = runCatching {
+        val usage = context.getSystemService(UsageStatsManager::class.java)
+        val now = System.currentTimeMillis()
+        val events = usage.queryEvents(now - windowMs, now)
+        val e = UsageEvents.Event()
+        val out = mutableListOf<String>()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += "${e.packageName.substringAfterLast('.')}@-${(now - e.timeStamp) / 100 / 10.0}s"
+        }
+        out.takeLast(12)
+    }.getOrDefault(emptyList())
+
     fun dumpUi(reason: String) {
         val out = java.io.ByteArrayOutputStream()
         runCatching { device.dumpWindowHierarchy(out) }
@@ -511,6 +706,12 @@ class DeviceRule(
     }
 
     companion object {
+        private const val TAG = "DeviceRule"
+        /** Logcat tag of the one-line failure diagnostics CI reports. */
+        const val DIAG = "GuardianDiag"
+        const val TRACE = "GuardianTrace"
+        private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime")
+        const val CALL_OUTGOING = 2
         const val TIMEOUT = 8_000L
         /** How long to watch for something that must not appear. */
         const val QUIET = 5_000L
