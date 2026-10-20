@@ -27,10 +27,10 @@ function QR({ value, label }: { value: string; label: string }) {
 }
 
 const STEPS = (parent: string) => [
-  { title: `Sit with ${parent}`, body: `Do this together, in person. ${parent} taps every “yes” on their own phone.` },
+  { title: `Sit down with ${parent}`, body: `Do this together, in person. ${parent} taps each “yes” on their own phone.` },
   { title: 'Install Guardian Mode', body: 'On their Android phone, open the Google Play Store and search for “Guardian Mode”. Tap Install.' },
   { title: 'Open it and choose “Set up with my family”', body: 'Then type the code below, or tap “Scan code” and point the phone at this screen.' },
-  { title: `${parent} says yes to each feature`, body: 'One short screen per feature explains what you’ll see and what you never see. Help with the switches if needed.' },
+  { title: `${parent} says yes to each feature`, body: 'Each feature gets one short screen that says what you’ll see and what you never see. Help with the switches if they need it.' },
 ];
 
 /** Step 2: show a short-lived setup code + QR, and celebrate when the phone connects. */
@@ -87,7 +87,7 @@ export function SetupScreen() {
             Connected!
           </h1>
           <p className="lede" role="status">
-            {parent}’s phone is now part of your family. Finish the steps on their phone, then come back to set up their home screen.
+            {parent}’s phone is connected to your family. Finish the steps on their phone, then come back here to set up their home screen.
           </p>
           <div className="row center">
             <ButtonLink to={paths.device(familyId, deviceId, 'home')} variant="primary" size="lg" iconAfter="arrowRight">
@@ -121,7 +121,7 @@ export function SetupScreen() {
       </ol>
       <header className="page-header">
         <h1 className="h-page">Connect {parent}’s phone</h1>
-        <p className="lede">Setup codes last 15 minutes, so get one when you’re sitting together with {parent}’s phone in hand.</p>
+        <p className="lede">Setup codes last 15 minutes, so get one once you’re sitting with {parent} and their phone.</p>
       </header>
 
       <div className="setup-grid">
@@ -164,7 +164,7 @@ export function SetupScreen() {
               >
                 Yes, show the code
               </Button>
-              <p className="small subtle">Not together yet? No problem: come back to this page when you are. Find it on your family home.</p>
+              <p className="small subtle">If you’re not together yet, come back when you are. You can find this page from your family home.</p>
             </div>
           ) : state === 'loading' && !invite ? (
             <Spinner label="Making a code" />
@@ -192,7 +192,7 @@ export function SetupScreen() {
           ) : (
             <div className="code-start stack">
               <Notice tone="info" icon="clock" title="That code has expired">
-                Codes last 15 minutes. Get a fresh one when you’re ready.
+                Codes last 15 minutes. Get a new one when you’re ready.
               </Notice>
               <Button variant="primary" size="lg" block icon="history" onClick={() => void newCode()} loading={state === 'loading'}>
                 Get a new code

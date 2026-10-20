@@ -29,6 +29,10 @@ Products that do ship family scam protection on Play today (Truecaller Family Pr
 
 Whether to declare `isMonitoringTool="other"`. Recommendation: do **not** declare it (Guardian is a self-protection app with user-chosen alerts, like Truecaller Family Protection), keep every safeguard above anyway, and ask Play developer policy support for a pre-review with the build and a demo video before going to production. Declaring it is a one-line `<meta-data>` addition in `android/app/src/main/AndroidManifest.xml`, where a comment marks the spot.
 
+### Lock levels and the lock code (2026-10-19)
+
+The Guided and Locked levels put Guardian's own exits (and, at Locked, other apps) behind a code. This stays inside design rule 1 because the code is set on the parent's phone during setup, with the parent present, and the transparency screen always says which level is on. It does not stop Android's own ways out (safe mode, factory reset). No new permissions: the Locked level reuses Usage access and "Display over other apps". Mention it in the Play pre-review, since a reviewer may read "can't leave the app" as abusive; the answer is that the parent sets and knows the code, like a phone's own screen lock.
+
 ## 2. Permissions and APIs
 
 | Need | What we use | Policy status |

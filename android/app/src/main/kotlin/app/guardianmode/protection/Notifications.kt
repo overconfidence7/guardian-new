@@ -64,7 +64,7 @@ object Notifications {
         return NotificationCompat.Builder(context, CHANNEL_PROTECTION)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(if (paused) "Guardian Mode is paused" else "Guardian Mode is on")
-            .setContentText(if (paused) "Protection is paused for a little while." else "Your family is in your corner. Tap to see what they can see.")
+            .setContentText(if (paused) "Protection is paused for now." else "Tap to see what your family can see.")
             .setContentIntent(open)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

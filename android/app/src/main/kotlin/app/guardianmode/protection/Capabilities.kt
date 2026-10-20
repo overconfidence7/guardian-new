@@ -22,7 +22,7 @@ enum class Capability(val key: String, val plainName: String) {
     OVERLAY("overlay", "Can show pause cards over other apps"),
     CALL_SCREENING("screening", "Can screen unknown callers"),
     PHONE_STATE("phoneState", "Can tell when a call starts and ends"),
-    CONTACTS("contacts", "Can recognise your contacts"),
+    CONTACTS("contacts", "Knows who your contacts are"),
     CALL_PHONE("callPhone", "Can call family with one tap"),
     NOTIFICATIONS("notifications", "Can show reminders and its notification"),
     EXACT_ALARMS("exactAlarms", "Reminders arrive on time"),

@@ -88,7 +88,7 @@ export function PhoneTab({ familyId, device }: { familyId: string; device: Devic
               max={200}
               step={10}
               format={(v) => `${v}%`}
-              hint="130% is the comfortable default. Go bigger if they squint or hold the phone far away."
+              hint="130% is the default and works for most people. Go bigger if they squint or hold the phone at arm’s length."
               onChange={(v) => update((c) => void (c.display.fontScale = Math.round(v) / 100))}
             />
             <Switch
@@ -104,7 +104,7 @@ export function PhoneTab({ familyId, device }: { familyId: string; device: Devic
               onChange={(v) => update((c) => void (c.display.theme = v))}
               options={[
                 { value: 'LIGHT', title: 'Light', description: 'Dark text on a light background. Easiest for most people.' },
-                { value: 'DARK', title: 'Dark', description: 'Light text on black. Gentler at night.' },
+                { value: 'DARK', title: 'Dark', description: 'Light text on black. Easier to look at in the dark.' },
                 { value: 'SYSTEM', title: 'Follow the phone', description: 'Switches with the phone’s own setting.' },
               ]}
             />
@@ -150,15 +150,15 @@ export function PhoneTab({ familyId, device }: { familyId: string; device: Devic
         <dl className="facts">
           <div>
             <dt>Phone</dt>
-            <dd>{device.model || '—'}</dd>
+            <dd>{device.model || 'Unknown'}</dd>
           </div>
           <div>
             <dt>Android</dt>
-            <dd>{device.androidVersion ? `Android ${device.androidVersion}` : '—'}</dd>
+            <dd>{device.androidVersion ? `Android ${device.androidVersion}` : 'Unknown'}</dd>
           </div>
           <div>
             <dt>Guardian Mode</dt>
-            <dd>{device.appVersion ? `Version ${device.appVersion}` : '—'}</dd>
+            <dd>{device.appVersion ? `Version ${device.appVersion}` : 'Unknown'}</dd>
           </div>
           <div>
             <dt>Last check-in</dt>
@@ -187,7 +187,7 @@ export function PhoneTab({ familyId, device }: { familyId: string; device: Devic
 
       {isOwner ? (
         <Card className="danger-zone">
-          <CardHeader title="Remove this phone" description={`Disconnects ${device.parentName}’s phone from the family and deletes its alerts, photos and settings here. Guardian Mode on the phone goes back to a fresh start.`} />
+          <CardHeader title="Remove this phone" description={`Disconnects ${device.parentName}’s phone from the family and deletes its alerts, photos and settings here. Guardian Mode on the phone starts over like it was just installed.`} />
           <Button variant="danger" icon="trash" onClick={() => setConfirmRemove(true)}>
             Remove {device.parentName}’s phone
           </Button>

@@ -4,7 +4,7 @@ import app.guardianmode.core.AppCategory
 import app.guardianmode.core.GuardianAction
 import kotlinx.serialization.Serializable
 
-enum class CardKind { PAUSE, REMOTE_ACCESS, SAFE_WORD, REMINDER }
+enum class CardKind { PAUSE, REMOTE_ACCESS, SAFE_WORD, REMINDER, LOCKED }
 
 /** Everything a full-screen card needs, passed to the card activity as JSON. */
 @Serializable
@@ -24,10 +24,11 @@ data class CardRequest(
 ) {
     val notificationTitle: String
         get() = when (kind) {
-            CardKind.PAUSE -> "Let's pause for a moment"
+            CardKind.PAUSE -> "Hold on a minute"
             CardKind.REMOTE_ACCESS -> if (knownRemoteAccessApp) "This app can control your phone" else "A new app can control your screen"
             CardKind.SAFE_WORD -> "Remember your family safe word"
             CardKind.REMINDER -> reminderTitle
+            CardKind.LOCKED -> "$appLabel is locked"
         }
 
     val notificationText: String
@@ -36,6 +37,7 @@ data class CardRequest(
             CardKind.REMOTE_ACCESS -> "Real companies never ask you to install $appLabel. Tap for what to do."
             CardKind.SAFE_WORD -> "If a caller said they're family and in trouble, ask for the safe word."
             CardKind.REMINDER -> reminderDetail.ifBlank { "Tap when it's done." }
+            CardKind.LOCKED -> "Enter the code to open it."
         }
 
     /** Key that identifies one reminder occurrence, used to record "Done". */

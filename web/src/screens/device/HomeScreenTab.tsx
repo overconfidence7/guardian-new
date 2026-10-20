@@ -106,7 +106,7 @@ function TileDialog({ open, onClose, device, initial, onSave }: { open: boolean;
       {kind === 'APP' ? (
         device.installedApps.length === 0 ? (
           <Notice tone="info" title="No apps reported yet">
-            Once the phone is connected, it shares the list of apps on it so you can pick one here.
+            Once the phone is connected, it sends its list of apps so you can pick one here.
           </Notice>
         ) : (
           <fieldset className="picker">
@@ -248,7 +248,7 @@ export function HomeScreenTab({ familyId, device }: { familyId: string; device: 
         </div>
       </aside>
 
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} title={`${device.parentName}’s home screen`} description="Approximately how it looks on the phone, including unsaved changes.">
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} title={`${device.parentName}’s home screen`} description="Roughly how it will look on the phone, with your unsaved changes.">
         {preview}
       </Dialog>
 

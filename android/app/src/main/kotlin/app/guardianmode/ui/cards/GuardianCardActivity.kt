@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -13,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import app.guardianmode.GuardianApp
 import app.guardianmode.core.GuardianJson
 import app.guardianmode.core.PauseOutcome
+import app.guardianmode.protection.UnlockResult
 import app.guardianmode.ui.Launch
 import app.guardianmode.ui.MainActivity
 import app.guardianmode.ui.theme.GuardianTheme
@@ -32,6 +34,13 @@ class GuardianCardActivity : ComponentActivity() {
             finish()
             return
         }
+        // Back on a locked app's cover goes home, never back into the app.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val req = request
+                if (req?.kind == CardKind.LOCKED) actions(req).goHome() else finish()
+            }
+        })
         setContent {
             val state = container.store.current
             GuardianTheme(state.config.display) {
@@ -91,7 +100,10 @@ class GuardianCardActivity : ComponentActivity() {
         }
 
         override fun dismiss() = finish()
+
+        override suspend fun tryUnlock(code: String): UnlockResult = container.lock.tryUnlock(code)
     }
+
 
     companion object {
         private const val EXTRA_REQUEST = "request"

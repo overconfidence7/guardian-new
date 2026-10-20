@@ -45,7 +45,7 @@ export function savedPushToken(): string | null {
 export async function getPushToken(): Promise<string> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw Object.assign(new Error('Notifications were not allowed. You can allow them in your browser settings.'), { code: 'permission-denied-push' });
-  if (useEmulators) throw new Error('Web push needs a real Firebase project; it isn’t available with the emulators.');
+  if (useEmulators) throw new Error('Web push needs a real Firebase project. It doesn’t work with the emulators.');
   if (!vapidKey) throw new Error('Web push isn’t configured yet (missing VITE_FIREBASE_VAPID_KEY).');
   const [{ getMessaging, getToken, isSupported }, { getServices }] = await Promise.all([import('firebase/messaging'), import('../data/firebaseApi')]);
   if (!(await isSupported())) throw new Error('This browser can’t receive push notifications.');

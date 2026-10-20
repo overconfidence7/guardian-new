@@ -58,7 +58,7 @@ export function OnboardingScreen() {
       </ol>
       <header className="page-header">
         <h1 className="h-page">Welcome, {user.displayName.split(' ')[0]}.</h1>
-        <p className="lede">Let’s set up your family. It takes about a minute here, then ten minutes sitting with your parent.</p>
+        <p className="lede">Setup takes about a minute here, then ten minutes sitting with your parent and their phone.</p>
       </header>
 
       <form className="card card-padded stack" style={{ ['--gap' as string]: 'var(--s-5)' }} onSubmit={submit} noValidate>

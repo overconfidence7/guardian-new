@@ -31,8 +31,9 @@ Every push to `main` publishes `guardian-mode-test.apk` to the **testing** pre-r
 1. On the phone, sign in to GitHub in the browser, open the repo's Releases page, and tap `guardian-mode-test.apk` under "Test build". (Or download it on a computer and copy it over, or `adb install -r guardian-mode-test.apk`.)
 2. Allow the browser to install unknown apps when Android asks, then install.
 3. Android 13+ blocks some permissions for sideloaded apps. When a switch is greyed out, open Settings > Apps > Guardian Mode debug > ⋮ > "Allow restricted settings", then try again.
-4. In the app, choose "Set up on my own for now". Family pairing needs the real Firebase project (Blaze plan), so it is off in this build.
+4. In the app, choose "Make this phone simpler", then "Set up on my own for now". Family pairing needs the real Firebase project (Blaze plan), so it is off in this build.
 5. Accept Guardian Mode as the Home app when asked.
+6. To try the lock, pick "Locked" during setup, then open Settings from the pull-down menu. A code screen should cover it within a second. If you forget the test code, uninstall from safe mode (hold the power-off button, then tap and hold "Power off").
 
 This build has no cloud connection: it never contacts the emulator host, and anything it would send to helpers stays queued on the phone.
 

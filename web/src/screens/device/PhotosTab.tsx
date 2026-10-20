@@ -128,7 +128,7 @@ export function PhotosTab({ familyId, device }: { familyId: string; device: Devi
         <Spinner />
       ) : list.length === 0 ? (
         <EmptyState icon="heart" title="No photos yet">
-          Grandkids, pets, the garden. A new photo is a lovely reason to pick up the phone.
+          A photo of the grandkids or the dog gives them a good reason to pick up the phone.
         </EmptyState>
       ) : (
         <ul className="photo-grid" aria-label="Photos sent">
@@ -160,7 +160,7 @@ export function PhotosTab({ familyId, device }: { familyId: string; device: Devi
         </Field>
         {pending ? (
           <p className="xsmall subtle">
-            Resized to {pending.image.width} × {pending.image.height} for a quick download on their phone.
+            We shrink it to {pending.image.width} × {pending.image.height} so it loads quickly on their phone.
           </p>
         ) : null}
       </Dialog>

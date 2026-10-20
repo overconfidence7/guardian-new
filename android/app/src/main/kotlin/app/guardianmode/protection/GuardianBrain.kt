@@ -10,6 +10,8 @@ import app.guardianmode.core.PhoneCallState
 import app.guardianmode.core.ScreeningDecision
 import app.guardianmode.core.TripwireEngine
 import app.guardianmode.data.LocalStore
+import app.guardianmode.ui.cards.CardKind
+import app.guardianmode.ui.cards.CardRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,6 +26,7 @@ class GuardianBrain(
     private val store: LocalStore,
     private val cards: CardLauncher,
     private val capabilities: Capabilities,
+    private val lock: LockManager,
     private val scope: CoroutineScope,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -58,7 +61,17 @@ class GuardianBrain(
         tracker.onCallState(state, now).flatMap { engine.onCall(it, now) }
     }
 
-    fun onForeground(packageName: String, label: String) = evaluate { now -> engine.onForeground(packageName, label, now) }
+    fun onForeground(packageName: String, label: String) {
+        // At the Locked level, an app the family didn't pick gets a code screen instead.
+        if (lock.blocks(packageName)) {
+            cards.show(CardRequest(kind = CardKind.LOCKED, packageName = packageName, appLabel = label))
+            return
+        }
+        evaluate { now -> engine.onForeground(packageName, label, now) }
+    }
+
+    /** Polled faster at the Locked level so a locked app is covered quickly. */
+    val lockedLevel: Boolean get() = lock.hasCode && lock.level == app.guardianmode.core.LockLevel.LOCKED
 
     fun onInstalled(packageName: String, label: String, controlCapable: Boolean) =
         evaluate { now -> engine.onPackageInstalled(packageName, label, controlCapable, now) }

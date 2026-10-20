@@ -93,7 +93,7 @@ export function JoinScreen() {
       <>
         <header className="page-header center-text">
           <h1 className="h-page">You’re invited to help</h1>
-          <p className="lede">Sign in to join your family on Guardian Mode. Invite code {formatCode(code)}.</p>
+          <p className="lede">Sign in to join your family on Guardian Mode. Your invite code is {formatCode(code)}.</p>
         </header>
         <SignInPanel intro="Sign in to accept" continuePath={`/join/${code}`} />
       </>
@@ -105,13 +105,13 @@ export function JoinScreen() {
           <Icon name="checkCircle" size={44} />
         </span>
         <h1 className="h-page">You’re in!</h1>
-        <p className="lede">Taking you to your family…</p>
+        <p className="lede">Opening your family’s page…</p>
       </div>
     );
   } else if (joined && membership === 'declined') {
     body = (
-      <Notice tone="notice" title="Not this time">
-        The invite wasn’t approved on the phone. If that seems wrong, talk with the family and ask for a new invite.
+      <Notice tone="notice" title="The invite wasn’t approved">
+        Someone said no on the phone. If that was a mistake, check with the family and ask for a new invite.
       </Notice>
     );
   } else if (joined) {
@@ -123,9 +123,9 @@ export function JoinScreen() {
         </span>
         <h1 className="h-page">Waiting for approval on the phone</h1>
         <p className="lede">
-          For everyone’s safety, your parent approves each new helper on their own phone. They’ll see “Allow {displayName.split(' ')[0]} to help?” next time they pick it up.
+          Your parent approves each new helper on their own phone, so nobody gets added without them knowing. They’ll see “Allow {displayName.split(' ')[0]} to help?” the next time they pick it up.
         </p>
-        <p className="muted small">You can close this page. We’ll let you in as soon as they say yes.</p>
+        <p className="muted small">You can close this page. We’ll let you in once they say yes.</p>
       </div>
     );
   } else {
@@ -133,7 +133,7 @@ export function JoinScreen() {
       <>
         <header className="page-header center-text">
           <h1 className="h-page">Join your family</h1>
-          <p className="lede">You’ll be able to help with the phone settings and get a heads-up when something needs you.</p>
+          <p className="lede">You’ll be able to change the phone’s settings and get a heads up when something needs you.</p>
         </header>
         <form className="card card-padded stack" style={{ ['--gap' as string]: 'var(--s-5)' }} onSubmit={submit} noValidate>
           <Field label="Your name" hint="As your parent knows you, like “David”.">

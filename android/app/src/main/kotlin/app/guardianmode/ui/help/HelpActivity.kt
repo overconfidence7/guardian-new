@@ -166,7 +166,7 @@ class HelpActivity : ComponentActivity() {
                     )
                 }
                 Spacer(Modifier.height(20.dp))
-                Text("Add a note:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
+                Text("Add a note", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
                 Spacer(Modifier.height(8.dp))
                 NOTES.forEach { option ->
                     FilterChip(

@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import app.guardianmode.GuardianApp
 import app.guardianmode.cloud.CloudSync
 import app.guardianmode.cloud.InvitePreview
+import app.guardianmode.core.LockLevel
 import app.guardianmode.protection.Capability
 import app.guardianmode.protection.Features
 import app.guardianmode.protection.GuardianService
@@ -26,7 +27,7 @@ import app.guardianmode.ui.theme.GuardianTheme
 import com.google.firebase.functions.FirebaseFunctionsException
 import kotlinx.coroutines.launch
 
-enum class Stage { WELCOME, CODE, SCAN, CONFIRM, CONSENT, DONE }
+enum class Stage { ROLE, HELPER, WELCOME, CODE, SCAN, CONFIRM, CONSENT, LOCK_LEVEL, SET_CODE, DONE }
 
 /**
  * Setup happens on the parent's phone with the parent present: they enter the code
@@ -37,7 +38,8 @@ class OnboardingActivity : ComponentActivity() {
 
     private val container get() = (application as GuardianApp).container
 
-    private var stage by mutableStateOf(Stage.WELCOME)
+    private var stage by mutableStateOf(Stage.ROLE)
+    private var lockLevel by mutableStateOf(LockLevel.GUIDED)
     private var code by mutableStateOf("")
     private var preview by mutableStateOf<InvitePreview?>(null)
     private var busy by mutableStateOf(false)
@@ -55,7 +57,7 @@ class OnboardingActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GuardianTheme {
-                BackHandler(enabled = stage != Stage.WELCOME) { back() }
+                BackHandler(enabled = stage != Stage.ROLE) { back() }
                 OnboardingFlow(
                     stage = stage,
                     code = code,
@@ -69,6 +71,7 @@ class OnboardingActivity : ComponentActivity() {
                     refreshKey = refresh,
                     granted = { container.capabilities.has(it) },
                     actions = actions,
+                    lockLevel = lockLevel,
                 )
             }
         }
@@ -82,18 +85,38 @@ class OnboardingActivity : ComponentActivity() {
     private fun back() {
         error = null
         stage = when (stage) {
-            Stage.CODE, Stage.WELCOME -> Stage.WELCOME
+            Stage.ROLE, Stage.HELPER, Stage.WELCOME -> Stage.ROLE
+            Stage.CODE -> Stage.WELCOME
             Stage.SCAN, Stage.CONFIRM -> Stage.CODE
             Stage.CONSENT -> if (pageIndex > 0) {
                 pageIndex--
                 accepted = container.store.current.consent[ConsentPages.all[pageIndex].key] == true
                 Stage.CONSENT
-            } else if (container.store.current.pairing != null) Stage.CONSENT else Stage.CODE
-            Stage.DONE -> Stage.CONSENT
+            } else if (container.store.current.pairing != null) Stage.CONSENT else Stage.WELCOME
+            Stage.LOCK_LEVEL -> Stage.CONSENT
+            Stage.SET_CODE -> Stage.LOCK_LEVEL
+            Stage.DONE -> if (container.lock.hasCode) Stage.LOCK_LEVEL else Stage.SET_CODE
         }
     }
 
     private val actions = object : OnboardingActions {
+        override fun simplifyThisPhone() { stage = Stage.WELCOME }
+        override fun helpSomeone() { stage = Stage.HELPER }
+        override fun backToRole() { stage = Stage.ROLE }
+        override fun onLockLevel(level: LockLevel) { lockLevel = level }
+
+        override fun lockLevelChosen() {
+            lifecycleScope.launch { container.store.update { it.copy(config = it.config.copy(lock = it.config.lock.copy(level = lockLevel))) } }
+            stage = Stage.SET_CODE
+        }
+
+        override fun onCodeSet(code: String) {
+            lifecycleScope.launch {
+                container.lock.setCode(code)
+                stage = Stage.DONE
+            }
+        }
+
         override fun start() { stage = Stage.CODE }
 
         override fun setupAlone() {
@@ -173,7 +196,7 @@ class OnboardingActivity : ComponentActivity() {
                 pageIndex++
                 accepted = container.store.current.consent[ConsentPages.all[pageIndex].key] == true
             } else {
-                stage = Stage.DONE
+                stage = Stage.LOCK_LEVEL
             }
         }
 
@@ -183,6 +206,7 @@ class OnboardingActivity : ComponentActivity() {
                     it.copy(onboardingDone = true, consentAcceptedAt = System.currentTimeMillis())
                 }.consent
                 container.cloud.reportConsent(consent, Features.CONSENT_VERSION)
+                container.cloud.pushConfigFromPhone(container.store.current.config)
                 container.protection.reportStatus()
                 container.reminders.reschedule()
                 GuardianService.start(this@OnboardingActivity)
@@ -218,11 +242,11 @@ class OnboardingActivity : ComponentActivity() {
     private fun friendlyError(t: Throwable): String {
         val code = (t as? FirebaseFunctionsException)?.code
         return when (code) {
-            FirebaseFunctionsException.Code.NOT_FOUND -> "That code didn't work. Please check it with your family member."
+            FirebaseFunctionsException.Code.NOT_FOUND -> "That code didn't work. Double check it with your family member."
             FirebaseFunctionsException.Code.FAILED_PRECONDITION -> "That code has expired. Ask your family member for a new one."
             FirebaseFunctionsException.Code.UNAVAILABLE, FirebaseFunctionsException.Code.DEADLINE_EXCEEDED ->
-                "The phone isn't connected to the internet. Please connect to Wi-Fi and try again."
-            else -> "Something went wrong. Please try again in a moment."
+                "The phone isn't connected to the internet. Connect to Wi-Fi and try again."
+            else -> "That didn't work. Try again in a minute."
         }
     }
 }

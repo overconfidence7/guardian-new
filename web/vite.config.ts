@@ -27,7 +27,7 @@ export default defineConfig({
         id: '/',
         name: 'Guardian Mode',
         short_name: 'Guardian',
-        description: "Your parent's phone, with your family in its corner.",
+        description: "Set up and help with your parent's Android phone from wherever you are.",
         start_url: '/',
         scope: '/',
         display: 'standalone',

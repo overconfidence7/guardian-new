@@ -106,7 +106,7 @@ class GuardianService : LifecycleService() {
             if (brain.callActive) brain.onTick()
             val pause = when {
                 !screenOn -> if (brain.callActive) 5_000L else 30_000L
-                brain.callActive || brain.isArmed() -> 1_000L
+                brain.callActive || brain.isArmed() || brain.lockedLevel -> 1_000L
                 else -> 3_000L
             }
             withTimeoutOrNull(pause) { wake.receive() }

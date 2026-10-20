@@ -19,12 +19,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +37,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.guardianmode.core.ReminderOccurrence
+import app.guardianmode.data.PhotoImporter
 import app.guardianmode.data.PhotoItem
+import app.guardianmode.ui.components.BigButton
 import app.guardianmode.ui.components.AppIcon
 import app.guardianmode.ui.components.GuardianPage
 import app.guardianmode.ui.theme.Guardian
@@ -51,7 +55,7 @@ fun AllAppsScreen(apps: List<AppEntry>, onOpen: (AppEntry) -> Unit, onPhoneSetti
     GuardianPage("All my apps", onBack) {
         if (apps.isEmpty()) {
             Text(
-                "Your family hasn't added any apps here yet.",
+                "Your family hasn't added any apps yet.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Guardian.colors.muted,
                 modifier = Modifier.padding(vertical = 12.dp),
@@ -93,13 +97,29 @@ fun AllAppsScreen(apps: List<AppEntry>, onOpen: (AppEntry) -> Unit, onPhoneSetti
 }
 
 @Composable
-fun PhotosScreen(photos: List<PhotoItem>, now: ZonedDateTime, onBack: () -> Unit) {
+fun PhotosScreen(
+    photos: List<PhotoItem>,
+    now: ZonedDateTime,
+    onBack: () -> Unit,
+    onAdd: (() -> Unit)? = null,
+    onRemove: ((PhotoItem) -> Unit)? = null,
+) {
     GuardianPage("Family photos", onBack) {
         if (photos.isEmpty()) {
             Text(
                 "When your family sends photos, you'll find them here.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Guardian.colors.muted,
+            )
+        }
+        if (onAdd != null) {
+            Spacer(Modifier.height(12.dp))
+            BigButton("Add photos from this phone", onAdd, icon = Icons.Rounded.AddPhotoAlternate, primary = false)
+            Text(
+                "You can also tap Share in Google Photos, Amazon Photos or your gallery and pick \"Add to photo card\".",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Guardian.colors.muted,
+                modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
             )
         }
         photos.sortedByDescending { it.createdAt }.forEach { photo ->
@@ -124,6 +144,11 @@ fun PhotosScreen(photos: List<PhotoItem>, now: ZonedDateTime, onBack: () -> Unit
                 Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
                 if (photo.caption.isNotBlank()) {
                     Text(photo.caption, style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)
+                }
+                if (onRemove != null && PhotoImporter.isLocal(photo)) {
+                    TextButton(onClick = { onRemove(photo) }) {
+                        Text("Remove this photo", style = MaterialTheme.typography.labelLarge)
+                    }
                 }
             }
         }

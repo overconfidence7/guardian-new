@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import app.guardianmode.core.GuardianEvent
 import app.guardianmode.core.SharingItem
+import app.guardianmode.core.LockLevel
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.ChangeItem
 import app.guardianmode.data.HelperInfo
@@ -58,6 +59,8 @@ data class TransparencyUi(
     val paused: Boolean,
     val pausedUntil: String?,
     val paired: Boolean,
+    val lockLevel: LockLevel = LockLevel.SIMPLE,
+    val hasCode: Boolean = false,
 )
 
 interface TransparencyActions {
@@ -67,6 +70,7 @@ interface TransparencyActions {
     fun onRemoveHelper(helper: HelperInfo)
     fun onStopUsing()
     fun onBack()
+    fun onLockSettings() {}
 }
 
 private val TOGGLEABLE = setOf("pause", "remoteAccess", "longCall", "screening", "checkIn")
@@ -79,7 +83,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
 
     GuardianPage("What my family can see", actions::onBack) {
         Text(
-            "Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can switch anything off.",
+            "Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -149,9 +153,18 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
             }
         }
 
+        Section("Phone lock")
+        Text(
+            lockSummary(ui.lockLevel, ui.hasCode),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(Modifier.height(12.dp))
+        BigButton(if (ui.hasCode) "Change the lock" else "Set up a lock", actions::onLockSettings, primary = false)
+
         Section("Stop using Guardian Mode")
         Text(
-            "You can stop at any time. Your helpers will see that this phone has left the family.",
+            "You can stop whenever you want. Your helpers will see that this phone has left the family.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -227,4 +240,11 @@ private fun FeatureCard(item: SharingItem, onToggle: ((Boolean) -> Unit)?) {
         Text("Shared: ${item.whatIsShared}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
         Text("Never shared: ${item.whatIsNeverShared}", style = MaterialTheme.typography.bodyMedium, color = Guardian.colors.muted)
     }
+}
+
+private fun lockSummary(level: LockLevel, hasCode: Boolean): String = when {
+    !hasCode -> "There's no lock code on this phone yet."
+    level == LockLevel.SIMPLE -> "Simple. The code is only needed to change the lock or stop using Guardian Mode."
+    level == LockLevel.GUIDED -> "Guided. The app list, phone settings and these switches need the code."
+    else -> "Locked. Any app your family didn't add, Settings included, needs the code. Calls always work."
 }

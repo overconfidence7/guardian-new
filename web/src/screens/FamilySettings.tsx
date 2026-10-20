@@ -49,7 +49,7 @@ function InviteDialog({ familyId, onClose }: { familyId: string; onClose: () => 
       open
       onClose={onClose}
       title="Invite a helper"
-      description="A brother, sister or close friend who can help with the phone. They’ll need to be approved on the parent’s phone before they can see anything."
+      description="A brother, sister or close friend who can help with the phone. Your parent has to approve them on their phone before they can see anything."
     >
       {!invite ? (
         <>
@@ -119,7 +119,7 @@ function NotificationsCard({ familyId, me }: { familyId: string; me: Member }) {
 
   return (
     <Card>
-      <CardHeader title="Notifications" description="Things that need you now always come through. You choose about the rest." />
+      <CardHeader title="Notifications" description="Urgent alerts always come through. You can choose whether to get the rest." />
       <div className="stack" style={{ ['--gap' as string]: 'var(--s-5)' }}>
         {support.kind === 'ios-needs-home-screen' && api.mode !== 'demo' ? (
           <Notice tone="info" icon="smartphone" title="On iPhone, add Guardian Mode to your Home Screen first">
@@ -154,10 +154,10 @@ function NotificationsCard({ familyId, me }: { familyId: string; me: Member }) {
             )}
           </div>
         )}
-        <Switch label="Things that need you now" description="A remote-control app was installed, a long call with an unknown number, and similar. Always on." checked disabled onChange={() => undefined} />
+        <Switch label="Things that need you now" description="Like a remote-control app getting installed, or a long call with an unknown number. These are always on." checked disabled onChange={() => undefined} />
         <Switch
           label="Good-to-know notes"
-          description="A pause card was shown, a reminder wasn’t confirmed, the phone hasn’t been used today."
+          description="Like when a pause card was shown, a reminder wasn’t confirmed, or the phone hasn’t been used today."
           checked={me.notify.notice === 'push'}
           onChange={(v) => void api.updateMyMember(familyId, me.uid, { notify: { urgent: 'push', notice: v ? 'push' : 'off' } }).catch((e) => toast(friendlyError(e), 'error'))}
         />
@@ -235,7 +235,7 @@ export function FamilySettings() {
         <Card>
           <CardHeader
             title="Helpers"
-            description={`Up to ${maxHelpers} on your plan. ${parent} can see who you all are, and remove anyone.`}
+            description={`Up to ${maxHelpers} on your plan. ${parent} can see who you all are and can remove anyone.`}
             action={
               <Button variant="primary" icon="plus" disabled={!canInvite} onClick={() => setInviting(true)}>
                 Invite
@@ -324,7 +324,7 @@ export function FamilySettings() {
                 <li>Everything in Free</li>
                 <li>Pause cards and all protection notices</li>
                 <li>Up to 4 helpers and 2 parent phones</li>
-                <li>Reminders that tell you if missed</li>
+                <li>Reminders that let you know when one is missed</li>
                 <li>Help screenshots</li>
               </ul>
               {fam.plan === 'free' ? (

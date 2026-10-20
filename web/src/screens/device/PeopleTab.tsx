@@ -130,7 +130,7 @@ function AllowDialog({ initial, onClose, onSave }: { initial: AllowedNumber | nu
       size="sm"
       onClose={onClose}
       title={initial ? 'Edit number' : 'Add a number that always rings'}
-      description="For places that call from numbers not in their contacts: pharmacy, doctor’s office, church."
+      description="For places that call from numbers that aren’t in their contacts, like the pharmacy, doctor’s office or church."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -205,7 +205,7 @@ export function PeopleTab({ familyId, device }: { familyId: string; device: Devi
         />
         {config.family.length === 0 ? (
           <EmptyState icon="users" title="No family yet">
-            Family members get call tiles, ring through screening, and are who the pause card suggests calling.
+            Family members can have call tiles and always ring through screening. The pause card also suggests calling them.
           </EmptyState>
         ) : (
           <ul className="people">

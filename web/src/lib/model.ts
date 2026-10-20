@@ -175,6 +175,15 @@ export interface DeviceConfig {
   protection: ProtectionSettings;
   checkIn: CheckInSettings;
   reminders: Reminder[];
+  lock: LockSettings;
+}
+
+export type LockLevel = 'SIMPLE' | 'GUIDED' | 'LOCKED';
+
+export interface LockSettings {
+  level: LockLevel;
+  /** A helper's temporary unlock, epoch millis. */
+  remoteUnlockUntil: number;
 }
 
 export interface GuardianEvent {
@@ -201,8 +210,11 @@ export function defaultDeviceConfig(overrides: Partial<Pick<DeviceConfig, 'paren
     protection: defaultProtectionSettings(),
     checkIn: defaultCheckInSettings(),
     reminders: [],
+    lock: defaultLockSettings(),
   };
 }
+
+export const defaultLockSettings = (): LockSettings => ({ level: 'SIMPLE', remoteUnlockUntil: 0 });
 
 export const defaultHomeLayout = (): HomeLayout => ({ tiles: [], showPhotoCard: true, columns: 2 });
 export const defaultDisplaySettings = (): DisplaySettings => ({ fontScale: 1.3, highContrast: false, theme: 'LIGHT' });
@@ -394,6 +406,7 @@ function buildSchemas(mode: Mode) {
     protection: d(protection, defaultProtectionSettings()),
     checkIn: d(checkIn, defaultCheckInSettings()),
     reminders: d(list(reminder), []),
+    lock: d(obj({ level: d(z.enum(['SIMPLE', 'GUIDED', 'LOCKED']), 'SIMPLE'), remoteUnlockUntil: d(z.number(), 0) }), defaultLockSettings()),
   });
 
   const event = obj({

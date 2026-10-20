@@ -63,7 +63,7 @@ export function assertUsable(invite: Invite, kind: Invite["kind"], uid: string, 
   if (invite.kind !== kind) {
     throw new HttpsError(
       "failed-precondition",
-      kind === "device" ? "This code is for adding a helper, not a phone." : "This code is for setting up a phone.",
+      kind === "device" ? "This code is for adding a helper. Phones use a different code." : "This code is for setting up a phone.",
       { reason: "wrong-kind" },
     );
   }

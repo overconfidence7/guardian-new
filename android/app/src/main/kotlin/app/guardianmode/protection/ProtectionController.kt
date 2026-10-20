@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import app.guardianmode.cloud.CloudSync
 import app.guardianmode.cloud.DeviceStatus
 import app.guardianmode.core.DeviceConfig
+import app.guardianmode.core.LockLevel
 import app.guardianmode.core.ScreeningMode
 import app.guardianmode.data.LocalStore
 
@@ -41,6 +42,12 @@ class ProtectionController(
      */
     suspend fun setFeature(key: String, enabled: Boolean) {
         val updated = store.update { s -> s.copy(config = s.config.withFeature(key, enabled)) }
+        cloud.pushConfigFromPhone(updated.config)
+    }
+
+    /** The parent (with the code) changed how locked down the phone is. Helpers see it like any change. */
+    suspend fun setLockLevel(level: LockLevel) {
+        val updated = store.update { s -> s.copy(config = s.config.copy(lock = s.config.lock.copy(level = level))) }
         cloud.pushConfigFromPhone(updated.config)
     }
 

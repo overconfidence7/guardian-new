@@ -3,6 +3,12 @@ package app.guardianmode
 import androidx.compose.runtime.Composable
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.guardianmode.core.DisplaySettings
+import app.guardianmode.core.LockLevel
+import app.guardianmode.protection.UnlockResult
+import app.guardianmode.ui.cards.CardKind
+import app.guardianmode.ui.cards.CardRequest
+import app.guardianmode.ui.lock.LockSettingsScreen
+import app.guardianmode.ui.lock.UnlockScreen
 import app.guardianmode.core.ThemePreference
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.HelperInfo
@@ -93,6 +99,18 @@ class ScreenshotTest {
 
     @Test fun reminderCard() = shot("card_reminder") { CardContent(Fixtures.reminder, Fixtures.config, card) }
 
+    @Test fun lockedCard() = shot("card_locked") {
+        CardContent(CardRequest(kind = CardKind.LOCKED, packageName = "com.android.settings", appLabel = "Settings"), Fixtures.config, card)
+    }
+
+    @Test fun lockSettings() = shot("lock_settings") {
+        LockSettingsScreen(LockLevel.GUIDED, hasCode = true, onLevel = {}, onSetCode = {}, onLockNow = {}, onBack = {})
+    }
+
+    @Test fun unlock() = shot("unlock") {
+        UnlockScreen(tryUnlock = { UnlockResult.Wrong }, onUnlocked = {}, onBack = {})
+    }
+
     @Test fun transparency() = shot("transparency") {
         TransparencyScreen(
             TransparencyUi(
@@ -141,6 +159,10 @@ class ScreenshotTest {
             )
         }
 
+    @Test fun onboardingRole() = onboardingShot("onboarding_role", Stage.ROLE)
+    @Test fun onboardingHelper() = onboardingShot("onboarding_helper", Stage.HELPER)
+    @Test fun onboardingLockLevel() = onboardingShot("onboarding_lock_level", Stage.LOCK_LEVEL)
+    @Test fun onboardingSetCode() = onboardingShot("onboarding_set_code", Stage.SET_CODE)
     @Test fun onboardingWelcome() = onboardingShot("onboarding_welcome", Stage.WELCOME)
     @Test fun onboardingCode() = onboardingShot("onboarding_code", Stage.CODE, code = "K7P")
     @Test fun onboardingConfirm() = onboardingShot("onboarding_confirm", Stage.CONFIRM)

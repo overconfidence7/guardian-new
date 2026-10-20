@@ -99,7 +99,7 @@ export function FinishSignIn() {
       {state === 'error' ? (
         <div className="card card-padded stack">
           <h1 className="h-page">That link didn’t work</h1>
-          <p className="muted">{error} Links work once and expire after a while. Request a new one.</p>
+          <p className="muted">{error} Each link works once and expires after a while, so ask for a new one.</p>
           <Button variant="primary" onClick={() => navigate('/', { replace: true })}>
             Back to sign in
           </Button>

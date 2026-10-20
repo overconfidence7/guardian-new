@@ -68,7 +68,7 @@ class ProtectionFlowTest {
             device.findObject(By.text("Everything's fine")).click()
         }
         brain.onForeground("com.chase.sig.android", "Chase")
-        assertThat(device.wait(Until.hasObject(By.text("Let's pause for a moment.")), TIMEOUT)).isTrue()
+        assertThat(device.wait(Until.hasObject(By.text("Hold on a minute.")), TIMEOUT)).isTrue()
         assertThat(device.hasObject(By.text("Call Sarah first"))).isTrue()
         device.findObject(By.text("I'm fine, continue")).click()
         Thread.sleep(500)
@@ -83,7 +83,7 @@ class ProtectionFlowTest {
         brain.onCallState(PhoneCallState.OFFHOOK)
         brain.onCallState(PhoneCallState.IDLE)
         brain.onForeground("com.chase.sig.android", "Chase")
-        assertThat(device.wait(Until.hasObject(By.text("Let's pause for a moment.")), 3_000)).isFalse()
+        assertThat(device.wait(Until.hasObject(By.text("Hold on a minute.")), 3_000)).isFalse()
     }
 
     @Test fun remoteAccessInstallShowsWarning() {

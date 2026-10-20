@@ -17,18 +17,18 @@ const previewConfig = parseDeviceConfig(fixture);
 const POINTS: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'home',
-    title: 'Simple, set up from anywhere',
-    body: 'Big photo tiles for the people they love. Change the home screen from your phone and it updates on theirs in seconds.',
+    title: 'A simple phone you set up from home',
+    body: 'Big photo buttons for the people they call most. Change their home screen from your phone and it updates on theirs in a few seconds.',
   },
   {
     icon: 'pause',
-    title: 'A pause at the right moment',
-    body: 'If a bank or gift-card app opens during or just after a call from an unknown number, a calm card asks them to call you first.',
+    title: 'A pause when a scam is most likely',
+    body: 'If a bank or gift-card app opens during or right after a call from an unknown number, their phone asks them to call you first.',
   },
   {
     icon: 'heart',
-    title: 'Their phone, their choice',
-    body: 'They agree to every feature, can see exactly what the family sees, and can switch any part off. No messages, locations or call lists, ever.',
+    title: 'It stays their phone',
+    body: 'They agree to each feature, can see what the family sees, and can turn any part off. We never share their messages, location or call list.',
   },
 ];
 
@@ -69,7 +69,7 @@ export function SignInPanel({ intro, continuePath }: { intro?: string; continueP
   return (
     <div className="signin card card-padded">
       <h2 className="signin-title">{intro ?? 'Get started'}</h2>
-      <p className="muted">For family members helping with a parent’s phone. It’s free to start.</p>
+      <p className="muted">For family helping with a parent’s phone. It’s free to start.</p>
 
       <Button variant="secondary" size="lg" block onClick={() => void run('google', () => api.auth.signInWithGoogle())} loading={busy === 'google'}>
         <span className="row nowrap" style={{ ['--gap' as string]: '10px' }}>
@@ -125,7 +125,7 @@ export function SignInPanel({ intro, continuePath }: { intro?: string; continueP
         </details>
       ) : null}
 
-      <p className="xsmall subtle signin-legal">By continuing you agree to our Terms and Privacy Policy. We never sell data, and never see messages, calls or locations.</p>
+      <p className="xsmall subtle signin-legal">By continuing you agree to our Terms and Privacy Policy. We never sell data, and we never see messages, calls or locations.</p>
     </div>
   );
 }
@@ -145,9 +145,9 @@ export function Landing() {
       <main id="main" className="landing-main">
         <section className="landing-hero">
           <p className="eyebrow">For the family of someone 70+ with an Android phone</p>
-          <h1 className="landing-title">Your parent’s phone, with your family in its corner.</h1>
+          <h1 className="landing-title">Help with your parent’s phone from wherever you are.</h1>
           <p className="landing-lede">
-            Guardian Mode turns Mom’s Android into a calm, simple phone you can set up from anywhere, and slows a scam down at the moments scams actually happen.
+            Guardian Mode turns Mom’s Android into a simple phone you can set up from your own phone. It also slows things down when a scam is most likely, like a call from a number she doesn’t know.
           </p>
           <div className="landing-signin">
             <SignInPanel />
@@ -174,7 +174,7 @@ export function Landing() {
         ))}
       </section>
       <footer className="landing-footer">
-        <p className="small subtle">Guardian Mode · Made for families · Helpers use any phone or computer; the parent’s phone needs Android 10 or newer.</p>
+        <p className="small subtle">Guardian Mode · Made for families · Helpers can use any phone or computer. The parent’s phone needs Android 10 or newer.</p>
       </footer>
     </div>
   );

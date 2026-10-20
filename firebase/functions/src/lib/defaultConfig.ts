@@ -85,5 +85,6 @@ export function defaultDeviceConfig(input: DefaultConfigInput): DeviceConfig {
       timezone: input.timezone ?? DEFAULT_TIMEZONE,
     },
     reminders: [],
+    lock: { level: "SIMPLE", remoteUnlockUntil: 0 },
   };
 }

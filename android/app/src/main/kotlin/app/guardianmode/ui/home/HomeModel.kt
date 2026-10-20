@@ -66,7 +66,7 @@ object HomeModel {
         val upcoming = ReminderSchedule.upcomingToday(config.reminders, now)
             .firstOrNull { it.at.isBefore(now.plusHours(2)) }
             ?.let { it.reminder.title to it.at.format(reminderTime) }
-        val photo = state.photos.maxByOrNull { it.createdAt }
+        val photo = (state.photos + state.localPhotos).maxByOrNull { it.createdAt }
         return HomeUi(
             time = now.format(timeFormat),
             date = now.format(dateFormat),

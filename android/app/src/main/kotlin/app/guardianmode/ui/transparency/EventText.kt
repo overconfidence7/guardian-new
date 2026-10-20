@@ -18,8 +18,8 @@ object EventText {
             EventType.HELP_REQUESTED -> "You asked for help and sent a picture of your screen."
             EventType.REMINDER_MISSED -> "\"${event.data["title"] ?: "A reminder"}\" wasn't marked done."
             EventType.PROTECTION_CHANGED_BY_PARENT -> "You changed a protection setting."
-            EventType.PERMISSION_MISSING -> "Something Guardian needs was switched off."
-            EventType.CHECK_IN_MISSED -> "Your phone hadn't been used yet today."
+            EventType.PERMISSION_MISSING -> "Something Guardian needs was turned off."
+            EventType.CHECK_IN_MISSED -> "Your phone hadn't been used yet today, so your family got a note."
         }
     }
 }

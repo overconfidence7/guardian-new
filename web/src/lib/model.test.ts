@@ -64,6 +64,7 @@ describe('defaults mirror Model.kt', () => {
       },
       checkIn: { enabled: true, deadline: '11:00', timezone: 'America/New_York' },
       reminders: [],
+      lock: { level: 'SIMPLE', remoteUnlockUntil: 0 },
     });
   });
 

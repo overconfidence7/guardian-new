@@ -3,10 +3,12 @@ package app.guardianmode
 import android.content.Context
 import app.guardianmode.cloud.CloudSync
 import app.guardianmode.data.LocalStore
+import app.guardianmode.data.PhotoImporter
 import app.guardianmode.protection.Capabilities
 import app.guardianmode.protection.CardLauncher
 import app.guardianmode.protection.GuardianBrain
 import app.guardianmode.protection.InstallWatcher
+import app.guardianmode.protection.LockManager
 import app.guardianmode.protection.ProtectionController
 import app.guardianmode.reminders.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
@@ -21,7 +23,9 @@ class AppContainer(context: Context) {
     val cards = CardLauncher(context, capabilities)
     val cloud = CloudSync(context, store, appScope)
     val installs = InstallWatcher(context)
-    val brain = GuardianBrain(store, cards, capabilities, appScope)
+    val lock = LockManager(context, store)
+    val brain = GuardianBrain(store, cards, capabilities, lock, appScope)
     val protection = ProtectionController(context, store, cloud, capabilities, installs, brain)
     val reminders = ReminderScheduler(context, store)
+    val photos = PhotoImporter(context, store)
 }

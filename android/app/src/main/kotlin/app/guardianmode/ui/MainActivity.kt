@@ -7,6 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -16,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import app.guardianmode.GuardianApp
+import app.guardianmode.core.LockedAction
 import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.core.Transparency
@@ -31,6 +34,8 @@ import app.guardianmode.ui.home.HomeScreen
 import app.guardianmode.ui.home.PhotosScreen
 import app.guardianmode.ui.home.RemindersScreen
 import app.guardianmode.ui.home.TileUi
+import app.guardianmode.ui.lock.LockSettingsScreen
+import app.guardianmode.ui.lock.UnlockScreen
 import app.guardianmode.ui.onboarding.OnboardingActivity
 import app.guardianmode.ui.theme.GuardianTheme
 import app.guardianmode.ui.transparency.TransparencyActions
@@ -48,6 +53,9 @@ class MainActivity : ComponentActivity() {
     private val container get() = (application as GuardianApp).container
     private var destination by mutableStateOf(DEST_HOME)
     private var needsAttention by mutableStateOf(false)
+    /** Where to go back to, and what to do, once the lock code is entered. */
+    private var unlockReturn = DEST_HOME
+    private var afterUnlock: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,15 +97,41 @@ class MainActivity : ComponentActivity() {
             }
         }
         GuardianTheme(state.config.display) {
-            BackHandler(enabled = destination != DEST_HOME) { destination = DEST_HOME }
+            BackHandler(enabled = destination != DEST_HOME) { destination = if (destination == DEST_UNLOCK) unlockReturn else DEST_HOME }
             when (destination) {
                 DEST_APPS -> AllAppsScreen(
                     apps = state.config.allowedApps.mapNotNull { pkg -> appLabel(pkg)?.let { AppEntry(pkg, it) } }.sortedBy { it.label.lowercase() },
                     onOpen = { Launch.app(this, it.packageName) },
-                    onPhoneSettings = { Launch.phoneSettings(this) },
+                    onPhoneSettings = { withCode(LockedAction.PHONE_SETTINGS) { Launch.phoneSettings(this) } },
                     onBack = { destination = DEST_HOME },
                 )
-                DEST_PHOTOS -> PhotosScreen(state.photos, now) { destination = DEST_HOME }
+                DEST_PHOTOS -> PhotosScreen(
+                    photos = state.photos + state.localPhotos,
+                    now = now,
+                    onBack = { destination = DEST_HOME },
+                    onAdd = { pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onRemove = { photo -> lifecycleScope.launch { container.photos.remove(photo.id) } },
+                )
+                DEST_UNLOCK -> UnlockScreen(
+                    tryUnlock = container.lock::tryUnlock,
+                    onUnlocked = {
+                        destination = unlockReturn
+                        afterUnlock?.invoke()
+                        afterUnlock = null
+                    },
+                    onBack = { destination = unlockReturn; afterUnlock = null },
+                )
+                DEST_LOCK -> LockSettingsScreen(
+                    level = state.config.lock.level,
+                    hasCode = state.lockCodeHash.isNotEmpty(),
+                    onLevel = { level -> lifecycleScope.launch { container.protection.setLockLevel(level) } },
+                    onSetCode = { code -> lifecycleScope.launch { container.lock.setCode(code) } },
+                    onLockNow = {
+                        lifecycleScope.launch { container.lock.relock() }
+                        destination = DEST_HOME
+                    },
+                    onBack = { destination = DEST_TRANSPARENCY },
+                )
                 DEST_REMINDERS -> RemindersScreen(
                     today = ReminderSchedule.upcomingToday(state.config.reminders, now.toLocalDate().atStartOfDay(now.zone)),
                     done = state.remindersDone.keys,
@@ -113,6 +147,8 @@ class MainActivity : ComponentActivity() {
                             Instant.ofEpochMilli(it).atZone(now.zone).format(DateTimeFormatter.ofPattern("h:mm a", LocalConfiguration.current.locales[0]))
                         },
                         paired = state.pairing != null,
+                        lockLevel = state.config.lock.level,
+                        hasCode = state.lockCodeHash.isNotEmpty(),
                     ),
                     actions = transparencyActions,
                 )
@@ -123,6 +159,22 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /** Android's own photo picker: no permission needed, and it includes Google Photos where the phone offers it. */
+    private val pickPhotos = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(MAX_PICK)) { uris ->
+        if (uris.isNotEmpty()) lifecycleScope.launch { container.photos.import(uris) }
+    }
+
+    /** Runs [block] straight away, or after the lock code when [action] needs it. */
+    private fun withCode(action: LockedAction, block: () -> Unit) {
+        if (!container.lock.needsCode(action)) {
+            block()
+            return
+        }
+        unlockReturn = destination
+        afterUnlock = block
+        destination = DEST_UNLOCK
     }
 
     private fun appLabel(pkg: String): String? = runCatching {
@@ -139,14 +191,14 @@ class MainActivity : ComponentActivity() {
                 TileKind.APP -> Launch.app(this@MainActivity, tile.target)
                 TileKind.PHOTOS -> destination = DEST_PHOTOS
                 TileKind.REMINDERS -> destination = DEST_REMINDERS
-                TileKind.ALL_APPS -> destination = DEST_APPS
+                TileKind.ALL_APPS -> onAllApps()
                 TileKind.HELP -> startActivity(Intent(this@MainActivity, HelpActivity::class.java))
             }
         }
 
         override fun onPhoto() { destination = DEST_PHOTOS }
         override fun onShield() { destination = DEST_TRANSPARENCY }
-        override fun onAllApps() { destination = DEST_APPS }
+        override fun onAllApps() = withCode(LockedAction.ALL_APPS) { destination = DEST_APPS }
         override fun onReminders() { destination = DEST_REMINDERS }
         override fun onHelperDecision(uid: String, approve: Boolean) {
             lifecycleScope.launch { runCatching { container.cloud.approveHelper(uid, approve) } }
@@ -154,11 +206,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private val transparencyActions = object : TransparencyActions {
-        override fun onToggle(key: String, enabled: Boolean) {
+        override fun onToggle(key: String, enabled: Boolean) = withCode(LockedAction.PROTECTION_SETTINGS) {
             lifecycleScope.launch { container.protection.setFeature(key, enabled) }
         }
 
-        override fun onPauseHour() {
+        override fun onPauseHour() = withCode(LockedAction.PROTECTION_SETTINGS) {
             lifecycleScope.launch { container.protection.pauseFor(60 * 60_000L) }
         }
 
@@ -166,14 +218,18 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { container.protection.resume() }
         }
 
-        override fun onRemoveHelper(helper: HelperInfo) {
+        override fun onRemoveHelper(helper: HelperInfo) = withCode(LockedAction.PROTECTION_SETTINGS) {
             lifecycleScope.launch { runCatching { container.cloud.removeHelper(helper.uid) } }
         }
 
-        override fun onStopUsing() {
+        override fun onLockSettings() = withCode(LockedAction.LOCK_SETTINGS) { destination = DEST_LOCK }
+
+        override fun onStopUsing() = withCode(LockedAction.STOP_USING) {
             lifecycleScope.launch {
                 container.cloud.leaveFamily()
-                container.store.update { it.copy(onboardingDone = false, consent = emptyMap()) }
+                container.store.update {
+                    it.copy(onboardingDone = false, consent = emptyMap(), lockCodeHash = "", lockCodeSalt = "", unlockedUntil = 0, lockFailures = 0, lockRetryAt = 0)
+                }
                 GuardianService.stop(this@MainActivity)
                 Launch.homeSettings(this@MainActivity)
             }
@@ -189,5 +245,8 @@ class MainActivity : ComponentActivity() {
         const val DEST_PHOTOS = "photos"
         const val DEST_REMINDERS = "reminders"
         const val DEST_TRANSPARENCY = "transparency"
+        const val DEST_UNLOCK = "unlock"
+        private const val MAX_PICK = 10
+        const val DEST_LOCK = "lock"
     }
 }
