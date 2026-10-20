@@ -1,0 +1,2 @@
+# Run output: screenshots, recordings, dumps and logs stay on the test machine.
+results/**/evidence/

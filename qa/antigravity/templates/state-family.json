@@ -1,0 +1,155 @@
+{
+  "_readme": "Merge the \"config\" object below into the phone's saved state (see RUNBOOK section 7), replacing its config but keeping the phone's existing config.lock (so the lock level you chose stays) and checkIn.timezone. Emulator numbers only: on the real phone, replace Sarah's and David's numbers with numbers Nate gives you. Delete this _readme key before pushing.",
+  "config": {
+    "schemaVersion": 1,
+    "revision": 1,
+    "parentName": "Margaret",
+    "family": [
+      {
+        "id": "sarah",
+        "name": "Sarah",
+        "relation": "Daughter",
+        "phone": "+1 555 010 1111",
+        "isPrimaryHelper": true
+      },
+      {
+        "id": "david",
+        "name": "David",
+        "relation": "Son",
+        "phone": "+1 555 010 2222"
+      }
+    ],
+    "contacts": [
+      {
+        "id": "patel",
+        "name": "Dr. Patel",
+        "phone": "+1 555 010 3333",
+        "note": "Doctor"
+      }
+    ],
+    "home": {
+      "tiles": [
+        {
+          "id": "t1",
+          "kind": "CALL_CONTACT",
+          "target": "sarah"
+        },
+        {
+          "id": "t2",
+          "kind": "CALL_CONTACT",
+          "target": "david"
+        },
+        {
+          "id": "t3",
+          "kind": "CALL_CONTACT",
+          "target": "patel"
+        },
+        {
+          "id": "t4",
+          "kind": "PHONE"
+        },
+        {
+          "id": "t5",
+          "kind": "MESSAGES"
+        },
+        {
+          "id": "t6",
+          "kind": "CAMERA"
+        },
+        {
+          "id": "t7",
+          "kind": "PHOTOS"
+        },
+        {
+          "id": "t8",
+          "kind": "REMINDERS"
+        },
+        {
+          "id": "t9",
+          "kind": "APP",
+          "target": "org.guardianqa.notes"
+        },
+        {
+          "id": "t10",
+          "kind": "HELP"
+        }
+      ],
+      "showPhotoCard": true,
+      "columns": 2
+    },
+    "display": {
+      "fontScale": 1.3,
+      "highContrast": false,
+      "theme": "LIGHT"
+    },
+    "allowedApps": [
+      "org.guardianqa.notes"
+    ],
+    "protection": {
+      "pauseTripwires": {
+        "enabled": true,
+        "windowMinutes": 30,
+        "categories": [
+          "PAYMENT",
+          "GIFT_CARD",
+          "CRYPTO",
+          "BANK"
+        ],
+        "extraPackages": {}
+      },
+      "remoteAccessAlarm": {
+        "enabled": true,
+        "trustedPackages": [],
+        "warnOnControlCapableInstalls": true
+      },
+      "callScreening": {
+        "mode": "SILENCE_UNKNOWN",
+        "allowlist": [
+          {
+            "label": "Pharmacy",
+            "number": "+1 555 010 4444"
+          }
+        ],
+        "allowRepeatCallers": true
+      },
+      "longCallAlert": {
+        "enabled": true,
+        "minutes": 20
+      },
+      "safeWord": {
+        "enabled": true,
+        "word": "bluebird"
+      }
+    },
+    "checkIn": {
+      "enabled": true,
+      "deadline": "11:00",
+      "timezone": "America/New_York"
+    },
+    "reminders": [
+      {
+        "id": "r1",
+        "title": "Blood pressure pill",
+        "detail": "One white tablet with water",
+        "kind": "MEDICATION",
+        "times": [
+          "09:00",
+          "20:00"
+        ],
+        "daysOfWeek": [],
+        "notifyFamilyIfMissed": true
+      },
+      {
+        "id": "r2",
+        "title": "Dr. Patel appointment",
+        "detail": "Bring the pill bottles",
+        "kind": "APPOINTMENT",
+        "times": [
+          "14:30"
+        ],
+        "date": "2026-10-21",
+        "notifyFamilyIfMissed": false
+      }
+    ]
+  }
+}
