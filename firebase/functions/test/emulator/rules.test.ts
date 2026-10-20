@@ -321,6 +321,153 @@ describe("config", () => {
   });
 });
 
+describe("config: changes only the parent can make (docs/SECURITY.md §3)", () => {
+  const CONFIG = dev("/config/current");
+  const family = () => [
+    { id: "fam_owner", name: "Sarah", relation: "Daughter", phone: "+1 555 010 1111", photoUrl: null, isPrimaryHelper: true },
+    { id: "fam_helper", name: "David", relation: "Son", phone: "+1 555 010 2222", photoUrl: null, isPrimaryHelper: false },
+  ];
+  const by = (uid: string, kind: "helper" | "device") => ({
+    updatedBy: { uid, name: kind === "helper" ? "David" : "Margaret", kind },
+    updatedAt: serverTimestamp(),
+  });
+  const helperEdits = (fields: DocumentData) => updateDoc(doc(db(as("helper")), CONFIG), { ...fields, ...by("helper", "helper") });
+  const parentEdits = (fields: DocumentData) => updateDoc(doc(db(as("phone")), CONFIG), { ...fields, ...by("phone", "device") });
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(db(ctx), CONFIG), {
+        parentName: "Margaret",
+        family: family(),
+        protection: {
+          pauseTripwires: { enabled: true, windowMinutes: 30 },
+          remoteAccessAlarm: { enabled: true, trustedPackages: ["com.teamviewer.host"], warnOnControlCapableInstalls: true },
+          longCallAlert: { enabled: true, minutes: 20 },
+        },
+        lock: { level: "GUIDED", remoteUnlockUntil: 0 },
+        updatedBy: { uid: "owner", name: "Sarah", kind: "helper" },
+        updatedAt: Timestamp.now(),
+      });
+    });
+  });
+
+  it("a helper can't trust a remote-control app, change a number or the primary helper", async () => {
+    await assertFails(helperEdits({ "protection.remoteAccessAlarm.trustedPackages": ["com.teamviewer.host", "com.anydesk.anydeskandroid"] }));
+    await assertFails(helperEdits({ family: family().map((f) => (f.name === "Sarah" ? { ...f, phone: "+1 555 010 9999" } : f)) }));
+    await assertFails(helperEdits({ family: family().map((f) => ({ ...f, isPrimaryHelper: f.name === "David" })) }));
+    await assertFails(helperEdits({ family: [...family(), { id: "fam_x", name: "Bank", relation: "", phone: "+1 555 010 0000", photoUrl: null, isPrimaryHelper: false }] }));
+  });
+  it("a helper can't turn off pause cards, the remote-control warning or long-call notices, or unlock remotely", async () => {
+    await assertFails(helperEdits({ "protection.pauseTripwires.enabled": false }));
+    await assertFails(helperEdits({ "protection.remoteAccessAlarm.enabled": false }));
+    await assertFails(helperEdits({ "protection.longCallAlert.enabled": false }));
+    await assertFails(helperEdits({ "lock.remoteUnlockUntil": Date.now() + 10 * 60_000 }));
+    // Dropping the whole protection map doesn't sneak past either.
+    await assertFails(setDoc(doc(db(as("helper")), CONFIG), { parentName: "Margaret", family: family(), protection: { pauseTripwires: { enabled: false } }, ...by("helper", "helper") }));
+  });
+  it("everyday edits, and edits that make things safer, apply at once", async () => {
+    await assertSucceeds(helperEdits({ "display.fontScale": 1.6, "home.columns": 3 }));
+    await assertSucceeds(helperEdits({ family: family().map((f) => (f.name === "David" ? { ...f, name: "Dave", relation: "Brother" } : f)) }));
+    await assertSucceeds(helperEdits({ "protection.remoteAccessAlarm.trustedPackages": [] }));
+    await assertSucceeds(helperEdits({ "protection.pauseTripwires.windowMinutes": 45, "protection.safeWord.enabled": false }));
+    await assertSucceeds(helperEdits({ "protection.pauseTripwires.enabled": true }));
+  });
+  it("a helper can turn a protection back on that the parent turned off", async () => {
+    await parentEdits({ "protection.longCallAlert.enabled": false });
+    await assertSucceeds(helperEdits({ "protection.longCallAlert.enabled": true }));
+  });
+  it("the parent's phone may make every one of these changes", async () => {
+    await assertSucceeds(parentEdits({ "protection.remoteAccessAlarm.trustedPackages": ["com.anydesk.anydeskandroid"] }));
+    await assertSucceeds(parentEdits({ "protection.pauseTripwires.enabled": false, "protection.longCallAlert.enabled": false }));
+    await assertSucceeds(parentEdits({ "protection.remoteAccessAlarm.enabled": false, "lock.remoteUnlockUntil": Date.now() + 600_000 }));
+    await assertSucceeds(parentEdits({ family: family().map((f) => ({ ...f, isPrimaryHelper: f.name === "David" })) }));
+  });
+  it("before a phone is paired there's no parent to ask, so helpers set it all up", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(db(ctx), dev()), { deviceUid: null });
+    });
+    await assertSucceeds(helperEdits({ family: family().map((f) => (f.name === "Sarah" ? { ...f, phone: "+1 555 010 9999" } : f)) }));
+    await assertSucceeds(helperEdits({ "protection.pauseTripwires.enabled": false }));
+  });
+});
+
+describe("requests (risky changes waiting for the parent)", () => {
+  const REQUESTS = dev("/requests");
+  const request = (overrides: DocumentData = {}): DocumentData => ({
+    byUid: "helper",
+    byName: "David",
+    changes: { pauseTripwiresEnabled: false },
+    status: "pending",
+    createdAt: serverTimestamp(),
+    ...overrides,
+  });
+  const seed = async (id: string, data: DocumentData) =>
+    env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(db(ctx), `${REQUESTS}/${id}`), { ...data, createdAt: Timestamp.now() });
+    });
+
+  it("a helper asks for a risky change", async () => {
+    await assertSucceeds(addDoc(collection(db(as("helper")), REQUESTS), request()));
+    await assertSucceeds(
+      addDoc(
+        collection(db(as("helper")), REQUESTS),
+        request({
+          changes: {
+            family: [{ id: "fam_owner", name: "Sarah", phone: "+1 555 010 9999", isPrimaryHelper: true }],
+            trustedPackages: ["com.anydesk.anydeskandroid"],
+            remoteAccessAlarmEnabled: false,
+            longCallAlertEnabled: false,
+            remoteUnlockUntil: Date.now() + 600_000,
+          },
+        }),
+      ),
+    );
+  });
+  it("requests are checked: own name, pending, known keys, sane values", async () => {
+    const helper = collection(db(as("helper")), REQUESTS);
+    await assertFails(addDoc(helper, request({ byUid: "owner" })));
+    await assertFails(addDoc(helper, request({ status: "approved" })));
+    await assertFails(addDoc(helper, request({ changes: {} })));
+    await assertFails(addDoc(helper, request({ changes: { "display.fontScale": 2 } })));
+    await assertFails(addDoc(helper, request({ changes: { pauseTripwiresEnabled: "no" } })));
+    await assertFails(addDoc(helper, request({ changes: { remoteUnlockUntil: Date.now() + 3 * 86_400_000 } })));
+    await assertFails(addDoc(helper, request({ createdAt: Timestamp.fromMillis(0) })));
+    await assertFails(addDoc(helper, request({ summary: "Just a font change" })));
+  });
+  it("pending helpers, strangers and phones can't ask", async () => {
+    await assertFails(addDoc(collection(db(as("pending")), REQUESTS), request({ byUid: "pending" })));
+    await assertFails(addDoc(collection(db(as("stranger")), REQUESTS), request({ byUid: "stranger" })));
+    await assertFails(addDoc(collection(db(as("phone")), REQUESTS), request({ byUid: "phone" })));
+  });
+  it("helpers and this phone read requests; others don't", async () => {
+    await seed("r1", request());
+    await assertSucceeds(getDoc(doc(db(as("helper")), `${REQUESTS}/r1`)));
+    await assertSucceeds(getDoc(doc(db(as("phone")), `${REQUESTS}/r1`)));
+    await assertFails(getDoc(doc(db(as("phone2")), `${REQUESTS}/r1`)));
+    await assertFails(getDoc(doc(db(as("stranger")), `${REQUESTS}/r1`)));
+    await assertFails(getDoc(doc(db(as("pending")), `${REQUESTS}/r1`)));
+  });
+  it("only this phone answers, once, and only with the status", async () => {
+    await seed("r1", request());
+    const answer = (ctx: RulesTestContext, status: string, extra: DocumentData = {}) =>
+      updateDoc(doc(db(ctx), `${REQUESTS}/r1`), { status, decidedAt: serverTimestamp(), ...extra });
+    await assertFails(answer(as("helper"), "approved"));
+    await assertFails(answer(as("owner"), "approved"));
+    await assertFails(answer(as("phone2"), "approved"));
+    await assertFails(answer(as("phone"), "maybe"));
+    await assertFails(answer(as("phone"), "approved", { changes: { pauseTripwiresEnabled: true } }));
+    await assertSucceeds(answer(as("phone"), "approved"));
+    await assertFails(answer(as("phone"), "declined"));
+  });
+  it("the helper who asked may withdraw a pending request; nobody else deletes", async () => {
+    await seed("r1", request());
+    await seed("r2", request({ byUid: "owner", byName: "Sarah" }));
+    await assertFails(deleteDoc(doc(db(as("helper")), `${REQUESTS}/r2`)));
+    await assertFails(deleteDoc(doc(db(as("phone")), `${REQUESTS}/r1`)));
+    await assertSucceeds(deleteDoc(doc(db(as("helper")), `${REQUESTS}/r1`)));
+  });
+});
+
 describe("events", () => {
   const event = (overrides: DocumentData = {}): DocumentData => ({
     type: "PAUSE_SHOWN",
@@ -339,9 +486,30 @@ describe("events", () => {
     const { data: _data, ...noData } = event();
     await assertSucceeds(create(as("phone"), noData));
   });
-  it("accepts exactly 10 data keys with 200-char values", async () => {
-    const data = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`k${i}`, "v".repeat(200)]));
-    await assertSucceeds(create(as("phone"), event({ data })));
+  it("accepts 200-char values", async () => {
+    await assertSucceeds(create(as("phone"), event({ data: { app: "v".repeat(200), category: "BANK" } })));
+  });
+  it("accepts every key the phone's events use (TripwireEngine, HelpActivity, ReminderScheduler)", async () => {
+    const ok = (type: string, data: Record<string, string>, severity = "NOTICE") =>
+      assertSucceeds(create(as("phone"), event({ type, severity, data })));
+    await ok("PAUSE_SHOWN", { app: "Chase", category: "BANK", duringCall: "false", minutesSinceCall: "4" });
+    await ok("PAUSE_CALLED_FAMILY", { app: "Chase" });
+    await ok("PAUSE_CONTINUED", { app: "Chase" });
+    await ok("REMOTE_ACCESS_INSTALLED", { app: "AnyDesk", afterUnknownCall: "true" }, "URGENT");
+    await ok("REMOTE_ACCESS_OPENED", { app: "AnyDesk", afterUnknownCall: "false" });
+    await ok("CONTROL_APP_INSTALLED", { app: "Helper", afterUnknownCall: "false" });
+    await ok("LONG_UNKNOWN_CALL", { minutes: "20", ongoing: "true" }, "URGENT");
+    await ok("HELP_REQUESTED", { path: dev("/help/h1.jpg"), note: "Is this real?" }, "URGENT");
+    await ok("REMINDER_MISSED", { title: "Blood pressure pill", time: "08:00" });
+    await ok("PROTECTION_CHANGED_BY_PARENT", { feature: "pause", enabled: "false" });
+    await ok("PERMISSION_MISSING", { permission: "usageAccess" }, "INFO");
+  });
+  it("refuses undocumented data keys: no number, caller or message can ride along", async () => {
+    await assertFails(create(as("phone"), event({ data: { app: "Chase", number: "+15550109999" } })));
+    await assertFails(create(as("phone"), event({ type: "LONG_UNKNOWN_CALL", severity: "URGENT", data: { minutes: "20", caller: "+15550109999" } })));
+    await assertFails(create(as("phone"), event({ type: "HELP_REQUESTED", data: { note: "Is this real?", message: "Your code is 123456" } })));
+    // A key documented for one type isn't allowed on another.
+    await assertFails(create(as("phone"), event({ type: "PERMISSION_MISSING", data: { permission: "overlay", app: "Chase" } })));
   });
   it("rejects a bad type or severity", async () => {
     await assertFails(create(as("phone"), event({ type: "SMS_READ" })));

@@ -1,5 +1,7 @@
 package app.guardianmode.ui.home
 
+import app.guardianmode.cloud.ChangeRequest
+import app.guardianmode.cloud.ChangeRequests
 import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.data.LocalState
@@ -31,6 +33,17 @@ data class HomeUi(
     val paired: Boolean,
     val needsAttention: Boolean,
     val pendingHelper: app.guardianmode.data.HelperInfo? = null,
+    /** A helper's risky change waiting for the parent's yes or no (docs/SECURITY.md §3). */
+    val pendingRequest: RequestUi? = null,
+)
+
+/** "Sarah wants to turn off the pause before sending money." */
+data class RequestUi(
+    val id: String,
+    val name: String,
+    val photoUrl: String?,
+    /** What the change does, in the parent's words, built from the change itself. */
+    val what: String,
 )
 
 /** Pure mapping from stored state to what the home screen shows, so it is easy to test. */
@@ -44,6 +57,7 @@ object HomeModel {
         now: ZonedDateTime,
         appLabel: (String) -> String? = { null },
         needsAttention: Boolean = false,
+        requests: List<ChangeRequest> = emptyList(),
     ): HomeUi {
         val config = state.config
         val people = config.family.associateBy { it.id }
@@ -82,7 +96,20 @@ object HomeModel {
             paired = state.pairing != null,
             needsAttention = needsAttention,
             pendingHelper = state.helpers.firstOrNull { it.pending },
+            pendingRequest = pendingRequest(state, requests, now.toInstant().toEpochMilli()),
         )
+    }
+
+    /**
+     * The oldest request from someone who is an approved helper right now. The name shown
+     * is the helper's own, from the family list, not the one written on the request.
+     */
+    fun pendingRequest(state: LocalState, requests: List<ChangeRequest>, now: Long): RequestUi? {
+        val helpers = state.helpers.filter { !it.pending }.associateBy { it.uid }
+        return requests.firstNotNullOfOrNull { r ->
+            val helper = helpers[r.byUid] ?: return@firstNotNullOfOrNull null
+            RequestUi(r.id, helper.name.ifBlank { r.byName.ifBlank { "A helper" } }, helper.photoUrl, ChangeRequests.describe(r.changes, now))
+        }
     }
 
     fun photoTitle(photo: PhotoItem, now: ZonedDateTime): String {

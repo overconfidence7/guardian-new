@@ -14,8 +14,12 @@
  *   feature, enabled                                                (PROTECTION_CHANGED_BY_PARENT)
  *   permission                                                      (PERMISSION_MISSING)
  *   reason ("silent"), deadline                                     (CHECK_IN_MISSED)
+ * and, written only by the server (lib/familyNotices.ts):
+ *   change ("added" | "declined" | "removed" | "left"), name, by     (HELPER_CHANGED)
+ *   byName, approved, what                                          (CHANGE_REQUEST_ANSWERED)
+ *   by                                                              (PHONE_LEFT)
  */
-import type { EventType, Severity } from "./lib/model.js";
+import type { AnyEventType, Severity } from "./lib/model.js";
 
 export interface NotificationCopy {
   title: string;
@@ -27,7 +31,7 @@ export interface CopyContext {
 }
 
 export interface CopyEvent {
-  type: EventType;
+  type: AnyEventType;
   severity: Severity;
   data: Readonly<Record<string, string>>;
 }
@@ -90,6 +94,12 @@ function isTrue(value: string | undefined): boolean {
   return value === "true";
 }
 
+/** The trimmed value, or the fallback when it is missing or blank. */
+function textOr(value: string | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : fallback;
+}
+
 function capitalize(s: string): string {
   return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
 }
@@ -112,7 +122,7 @@ function quote(s: string): string {
 
 type CopyBuilder = (p: string, data: Readonly<Record<string, string>>, severity: Severity) => NotificationCopy;
 
-const BUILDERS: Record<EventType, CopyBuilder> = {
+const BUILDERS: Record<AnyEventType, CopyBuilder> = {
   LONG_UNKNOWN_CALL: (p, data, severity) => {
     const minutes = intOf(data.minutes);
     const duration = minutes === null ? "a while" : minutesPhrase(minutes);
@@ -134,7 +144,7 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
     if (isTrue(data.duringCall)) {
       return {
         title: `${p} paused before opening ${app}`,
-        body: `${p} opened ${app} during a call with an unknown number, so the phone showed a pause card first.`,
+        body: `${p} opened ${app} during a call with an unknown number. A pause card was shown.`,
       };
     }
     const minutes = intOf(data.minutesSinceCall);
@@ -144,7 +154,7 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
         : `${minutesPhrase(minutes)} after a call from an unknown number`;
     return {
       title: `${p} paused before opening ${app}`,
-      body: `${p} opened ${app} ${when}, so the phone showed a pause card first.`,
+      body: `${p} opened ${app} ${when}. A pause card was shown.`,
     };
   },
 
@@ -260,6 +270,60 @@ const BUILDERS: Record<EventType, CopyBuilder> = {
       title: `${possessive(p)} phone hasn’t been used yet today`,
       body: `${possessive(p)} phone ${notYet}. It may be nothing. A quick call will tell you.`,
     };
+  },
+
+  HELPER_CHANGED: (p, data) => {
+    const name = textOr(data.name, "Someone");
+    const by = data.by?.trim();
+    switch (data.change) {
+      case "added":
+        return {
+          title: `${name} is now helping with ${possessive(p)} phone`,
+          body: `${p} said yes to ${name} on the phone. ${name} can now change ${possessive(p)} settings and will get these notices too.`,
+        };
+      case "declined":
+        return {
+          title: `${p} said no to ${name}`,
+          body: `${name} asked to help with ${possessive(p)} phone, and ${p} said no. Nothing changed.`,
+        };
+      case "left":
+        return {
+          title: `${name} stopped helping with ${possessive(p)} phone`,
+          body: `${name} left the family, so they can’t see or change anything on ${possessive(p)} phone now.`,
+        };
+      default:
+        return {
+          title: `${name} no longer helps with ${possessive(p)} phone`,
+          body: `${by && by !== name ? by : p} removed ${name} from the family, so ${name} can’t see or change anything on ${possessive(p)} phone now.`,
+        };
+    }
+  },
+
+  CHANGE_REQUEST_ANSWERED: (p, data) => {
+    const by = textOr(data.byName, "A helper");
+    const what = textOr(data.what, "change a protection setting");
+    return data.approved === "true"
+      ? {
+          title: `${p} said yes to a change from ${by}`,
+          body: `${by} asked to ${what}. ${p} said yes on the phone, so the change is in place.`,
+        }
+      : {
+          title: `${p} said no to a change from ${by}`,
+          body: `${by} asked to ${what}. ${p} said no on the phone, so nothing changed.`,
+        };
+  },
+
+  PHONE_LEFT: (p, data) => {
+    const by = data.by?.trim();
+    return by
+      ? {
+          title: `${possessive(p)} phone was taken out of the family`,
+          body: `${by} removed ${possessive(p)} phone from the family, so you won’t hear from it anymore.`,
+        }
+      : {
+          title: `${p} stopped using Guardian Mode`,
+          body: `${p} took their phone out of the family, so you won’t hear from it anymore. A quick call will tell you if that was the plan.`,
+        };
   },
 };
 

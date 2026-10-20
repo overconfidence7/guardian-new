@@ -4,6 +4,7 @@
  * with fixture data for /demo (no backend) and for screenshots.
  */
 import type { DeviceConfig } from '../lib/model';
+import type { RiskyChanges } from '../lib/riskyChanges';
 import type { ChangeDoc, ConfigDoc, Device, EventDoc, Family, Invite, Member, PhotoDoc } from '../lib/types';
 
 export type Unsubscribe = () => void;
@@ -23,6 +24,12 @@ export interface Author {
 }
 
 export type MembershipState = 'pending' | 'active' | 'declined';
+
+export interface SaveResult {
+  config: DeviceConfig;
+  /** What waits for the parent's yes on the phone, or null when everything applied. */
+  held: RiskyChanges | null;
+}
 
 export interface AuthApi {
   /** Calls back with the signed-in user or null; first call happens once state is known. */
@@ -61,9 +68,11 @@ export interface DataApi {
   /**
    * Write the whole config doc. Merges `draft` onto the latest document using `base`
    * (what the editor started from) so concurrent edits elsewhere are kept.
+   * Changes only the parent can make (lib/riskyChanges.ts) are not written: once the
+   * phone is paired they go to the phone as a request instead, returned as `held`.
    * Returns the config that was written.
    */
-  saveConfig(familyId: string, deviceId: string, base: DeviceConfig, draft: DeviceConfig, by: Author): Promise<DeviceConfig>;
+  saveConfig(familyId: string, deviceId: string, base: DeviceConfig, draft: DeviceConfig, by: Author): Promise<SaveResult>;
 
   uploadPhoto(familyId: string, deviceId: string, jpeg: Blob, caption: string, by: Author): Promise<void>;
   deletePhoto(familyId: string, deviceId: string, photo: PhotoDoc): Promise<void>;

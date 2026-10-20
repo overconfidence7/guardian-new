@@ -47,7 +47,8 @@ import { connectStorageEmulator, deleteObject, getDownloadURL, getStorage, ref, 
 import { emulatorHost, firebaseConfig, FUNCTIONS_REGION, useEmulators } from '../lib/env';
 import { newId } from '../lib/ids';
 import { stripUndefined, threeWayMerge } from '../lib/merge';
-import { parseDeviceConfig, type DeviceConfig, type EventType, type Severity } from '../lib/model';
+import { splitRiskyChanges } from '../lib/riskyChanges';
+import { parseDeviceConfig, type AnyEventType, type DeviceConfig, type Severity } from '../lib/model';
 import type { ChangeDoc, ConfigDoc, Device, EventDoc, Family, Invite, Member, PhotoDoc } from '../lib/types';
 import type { AppUser, AuthApi, DataApi, ErrorListener } from './api';
 
@@ -166,7 +167,7 @@ function toEvent(s: QueryDocumentSnapshot<DocumentData>): EventDoc {
   }
   return {
     id: s.id,
-    type: d.type as EventType,
+    type: d.type as AnyEventType,
     severity: (d.severity as Severity) ?? 'NOTICE',
     at: typeof d.at === 'number' ? d.at : (millis(d.createdAt) ?? Date.now()),
     data,
@@ -434,11 +435,15 @@ export const firebaseApi: DataApi = {
   async saveConfig(familyId, deviceId, base, draft, by) {
     const { db } = getServices();
     const configRef = doc(db, devicePath(familyId, deviceId), 'config', 'current');
+    const deviceRef = doc(db, devicePath(familyId, deviceId));
     return runTransaction(db, async (tx) => {
-      const snap = await tx.get(configRef);
+      const [snap, deviceSnap] = await Promise.all([tx.get(configRef), tx.get(deviceRef)]);
       const remote = parseDeviceConfig(snap.data() ?? {});
       const merged = threeWayMerge(base, draft, remote);
-      const written: DeviceConfig = { ...merged, revision: Date.now() };
+      // With a phone paired, the rules hold risky changes for the parent (SECURITY.md §3).
+      const paired = typeof deviceSnap.get('deviceUid') === 'string';
+      const { direct, request } = paired ? splitRiskyChanges(remote, merged) : { direct: merged, request: null };
+      const written: DeviceConfig = { ...direct, revision: Date.now() };
       tx.set(
         configRef,
         stripUndefined({
@@ -447,7 +452,13 @@ export const firebaseApi: DataApi = {
           updatedAt: serverTimestamp(),
         }),
       );
-      return written;
+      if (request) {
+        tx.set(
+          doc(collection(db, devicePath(familyId, deviceId), 'requests')),
+          stripUndefined({ byUid: by.uid, byName: by.name, changes: request, status: 'pending', createdAt: serverTimestamp() }),
+        );
+      }
+      return { config: written, held: request };
     });
   },
 

@@ -226,15 +226,37 @@ describe("helpers join only with the parent's approval", () => {
     expect(await phone.call("approveHelper", { familyId, uid: david.uid, approve: true })).toEqual({});
   });
 
-  it("declining deletes the pending member", async () => {
+  it("every helper is told David was added, and the phone lists him in Recent changes (SECURITY.md §3)", async () => {
+    const notice = await helperNotice("added", "David");
+    expect(notice.data()).toMatchObject({ severity: "URGENT", source: "server" });
+    expect(notice.get("deliveredTo")).toContain(sarah.uid);
+    // The retried approval above didn't announce him twice.
+    const all = await deviceRef().collection("events").where("type", "==", "HELPER_CHANGED").get();
+    expect(all.docs.filter((d) => d.get("data.name") === "David" && d.get("data.change") === "added")).toHaveLength(1);
+    const changes = await deviceRef().collection("changes").where("byUid", "==", david.uid).get();
+    expect(changes.docs.map((d) => d.get("summary") as string)).toContain("Became one of your helpers");
+  });
+
+  it("declining deletes the pending member, and helpers are told", async () => {
     const emma = await helperClient("Emma");
     const { code: c2 } = await sarah.call<{ code: string }>("createHelperInvite", { familyId });
     await emma.call("acceptHelperInvite", { code: c2, displayName: "Emma" });
     await phone.call("approveHelper", { familyId, uid: emma.uid, approve: false });
     expect((await familyRef().collection("members").doc(emma.uid).get()).exists).toBe(false);
     expect((await familyRef().get()).get("memberUids")).not.toContain(emma.uid);
+    const notice = await helperNotice("declined", "Emma");
+    expect(notice.get("deliveredTo")).toEqual([sarah.uid, david.uid].sort());
   });
 });
+
+/** The delivered HELPER_CHANGED notice about `name`. */
+function helperNotice(change: string, name: string) {
+  return eventually(async () => {
+    const snap = await deviceRef().collection("events").where("type", "==", "HELPER_CHANGED").get();
+    const found = snap.docs.find((d) => d.get("data.change") === change && d.get("data.name") === name);
+    return found && Array.isArray(found.get("deliveredTo")) ? found : undefined;
+  });
+}
 
 describe("onConfigWritten", () => {
   it("a helper's edit writes a change entry the phone can show", async () => {
@@ -287,6 +309,64 @@ describe("onConfigWritten", () => {
   });
 });
 
+describe("risky changes wait for the parent (SECURITY.md §3)", () => {
+  it("David can't turn pause cards off directly; he asks, Margaret says yes on the phone, and everyone is told", async () => {
+    const by = { updatedBy: { uid: david.uid, name: "David", kind: "helper" }, updatedAt: serverTimestamp() };
+    await expect(updateDoc(doc(david.db, configPath()), { "protection.pauseTripwires.enabled": false, ...by })).rejects.toMatchObject({
+      code: "permission-denied",
+    });
+    const request = await addDoc(collection(david.db, `families/${familyId}/devices/${deviceId}/requests`), {
+      byUid: david.uid,
+      byName: "David",
+      changes: { pauseTripwiresEnabled: false },
+      status: "pending",
+      createdAt: serverTimestamp(),
+    });
+    // What the phone does on "Allow": write the config as the device, then answer.
+    await setDoc(
+      doc(phone.db, configPath()),
+      {
+        protection: { pauseTripwires: { enabled: false } },
+        updatedBy: { uid: phone.uid, name: "Margaret", kind: "device" },
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    await updateDoc(doc(phone.db, request.path), { status: "approved", decidedAt: serverTimestamp() });
+
+    const answered = deviceRef().collection("events").doc(`req_${request.id}`);
+    const delivered = await eventually(async () => (await answered.get()).get("deliveredTo") as string[] | undefined);
+    expect(delivered).toEqual([sarah.uid, david.uid].sort());
+    expect((await answered.get()).data()).toMatchObject({
+      type: "CHANGE_REQUEST_ANSWERED",
+      severity: "URGENT",
+      source: "server",
+      data: { byName: "David", approved: "true", what: "turn off the pause before sending money" },
+    });
+    expect((await deviceRef().collection("changes").doc(`req_${request.id}`).get()).get("summary")).toBe(
+      "Turned off the pause before sending money after you said yes",
+    );
+    expect((await admin().doc(configPath()).get()).get("protection.pauseTripwires.enabled")).toBe(false);
+  });
+
+  it("a declined request changes nothing and helpers are told", async () => {
+    const request = await addDoc(collection(sarah.db, `families/${familyId}/devices/${deviceId}/requests`), {
+      byUid: sarah.uid,
+      byName: "Sarah",
+      changes: { trustedPackages: ["com.anydesk.anydeskandroid"] },
+      status: "pending",
+      createdAt: serverTimestamp(),
+    });
+    await updateDoc(doc(phone.db, request.path), { status: "declined", decidedAt: serverTimestamp() });
+    const answered = deviceRef().collection("events").doc(`req_${request.id}`);
+    expect(await eventually(async () => (await answered.get()).get("deliveredTo") as string[] | undefined)).toEqual(
+      [sarah.uid, david.uid].sort(),
+    );
+    expect((await answered.get()).get("data")).toMatchObject({ approved: "false", what: "trust a remote-control app" });
+    expect((await deviceRef().collection("changes").doc(`req_${request.id}`).get()).exists).toBe(false);
+  });
+});
+
 describe("code lockout and rate limiting", () => {
   it("5 failed tries lock a code", async () => {
     const { code } = await sarah.call<{ code: string }>("createHelperInvite", { familyId });
@@ -324,6 +404,11 @@ describe("removeHelper", () => {
     expect(family.memberUids).toEqual([david.uid]);
     expect(family.ownerUid).toBe(david.uid);
     expect((await familyRef().collection("members").doc(david.uid).get()).get("role")).toBe("owner");
+    // David is told Sarah no longer helps, and the phone's Recent changes says so.
+    const notice = await helperNotice("removed", "Sarah");
+    expect(notice.get("deliveredTo")).toEqual([david.uid]);
+    const changes = await deviceRef().collection("changes").where("byUid", "==", sarah.uid).get();
+    expect(changes.docs.map((d) => d.get("summary") as string)).toContain("Is no longer one of your helpers");
   });
 
   it("but not the last helper", async () => {

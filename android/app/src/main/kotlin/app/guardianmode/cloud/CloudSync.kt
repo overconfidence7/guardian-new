@@ -26,6 +26,9 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -65,6 +68,14 @@ class CloudSync(
     private var outboxJob: Job? = null
     private val uploadLock = Mutex()
     private var started = false
+
+    /** The config as this phone last received it, normalized: the base for [pushConfigFromPhone]'s merge. */
+    @Volatile private var lastRemote: JsonObject? = null
+
+    private val _pendingRequests = MutableStateFlow<List<ChangeRequest>>(emptyList())
+
+    /** Helpers' risky changes waiting for the parent's yes or no, oldest first. Live while listening. */
+    val pendingRequests: StateFlow<List<ChangeRequest>> = _pendingRequests.asStateFlow()
 
     private fun initFirebase(): FirebaseApp {
         FirebaseApp.getApps(context).firstOrNull { it.name == FirebaseApp.DEFAULT_APP_NAME }?.let { return it }
@@ -168,8 +179,23 @@ class CloudSync(
                 Log.w(TAG, "Ignoring unreadable config", it)
                 return@addSnapshotListener
             }
+            lastRemote = encode(config)
             scope.launch { store.update { it.copy(config = config) } }
         }
+        listeners += device.collection("requests").whereEqualTo("status", "pending")
+            .addSnapshotListener { snap, error ->
+                if (error != null || snap == null) return@addSnapshotListener
+                _pendingRequests.value = snap.documents.sortedBy { it.getTimestamp("createdAt")?.seconds ?: 0L }.mapNotNull { doc ->
+                    @Suppress("UNCHECKED_CAST")
+                    val changes = doc.get("changes") as? Map<String, Any?> ?: return@mapNotNull null
+                    ChangeRequest(
+                        id = doc.id,
+                        byUid = doc.getString("byUid") ?: return@mapNotNull null,
+                        byName = doc.getString("byName") ?: "",
+                        changes = changes,
+                    )
+                }
+            }
         listeners += device.collection("photos").orderBy("createdAt", Query.Direction.DESCENDING).limit(20)
             .addSnapshotListener { snap, error ->
                 if (error != null || snap == null) return@addSnapshotListener
@@ -294,18 +320,66 @@ class CloudSync(
         }.onFailure { Log.w(TAG, "Consent report failed", it) }
     }
 
-    /** The parent changed a setting on the phone; helpers see it on the dashboard. */
+    private fun encode(config: DeviceConfig): JsonObject =
+        GuardianJson.json.encodeToJsonElement(DeviceConfig.serializer(), config).jsonObject
+
+    /** A stored config document, normalized the way the phone reads it (defaults filled, unknown keys dropped). */
+    private fun normalize(data: Map<String, Any?>): JsonObject? = runCatching {
+        encode(GuardianJson.json.decodeFromJsonElement(DeviceConfig.serializer(), FirestoreJson.toJson(data)))
+    }.getOrNull()
+
+    private fun configDoc(config: JsonObject, parentName: String): Map<String, Any?> =
+        FirestoreJson.toMap(config) + mapOf(
+            "updatedBy" to mapOf("uid" to (auth.currentUser?.uid ?: ""), "name" to parentName, "kind" to "device"),
+            "updatedAt" to FieldValue.serverTimestamp(),
+        )
+
+    /**
+     * The parent changed a setting on the phone; helpers see it on the dashboard. Written in a
+     * transaction as a three-way merge against the last config this phone received, so a
+     * helper's edit to another setting that landed meanwhile isn't overwritten.
+     */
     suspend fun pushConfigFromPhone(config: DeviceConfig) {
         val p = store.current.pairing ?: return
         runCatching {
             ensureSignedIn()
-            val json = GuardianJson.json.encodeToJsonElement(DeviceConfig.serializer(), config).jsonObject
-            val doc = FirestoreJson.toMap(JsonObject(json)) + mapOf(
-                "updatedBy" to mapOf("uid" to (auth.currentUser?.uid ?: ""), "name" to config.parentName, "kind" to "device"),
-                "updatedAt" to FieldValue.serverTimestamp(),
-            )
-            deviceDoc(p).collection("config").document("current").set(doc).await()
+            val ref = deviceDoc(p).collection("config").document("current")
+            val local = encode(config)
+            val base = lastRemote
+            db.runTransaction { tx ->
+                val remote = tx.get(ref).data?.let(::normalize)
+                val merged = if (base == null || remote == null) local else ConfigMerge.threeWay(base, local, remote) as? JsonObject ?: local
+                tx.set(ref, configDoc(merged, config.parentName))
+                true
+            }.await()
         }.onFailure { Log.w(TAG, "Config push failed", it) }
+    }
+
+    /**
+     * The parent's yes or no to a helper's risky change (docs/SECURITY.md §3). On yes the
+     * phone writes the change into the config itself (attributed to the device); either way
+     * the request is marked answered and the server tells every helper.
+     */
+    suspend fun answerRequest(request: ChangeRequest, approve: Boolean) {
+        val p = store.current.pairing ?: return
+        ensureSignedIn()
+        val requestRef = deviceDoc(p).collection("requests").document(request.id)
+        val configRef = deviceDoc(p).collection("config").document("current")
+        db.runTransaction { tx ->
+            val current = tx.get(requestRef)
+            val configSnap = if (approve) tx.get(configRef) else null
+            if (current.getString("status") != "pending") return@runTransaction false
+            if (approve) {
+                val remote = configSnap?.data?.let { data ->
+                    runCatching { GuardianJson.json.decodeFromJsonElement(DeviceConfig.serializer(), FirestoreJson.toJson(data)) }.getOrNull()
+                } ?: store.current.config
+                val updated = ChangeRequests.apply(remote, request.changes)
+                tx.set(configRef, configDoc(encode(updated), updated.parentName))
+            }
+            tx.update(requestRef, mapOf("status" to (if (approve) "approved" else "declined"), "decidedAt" to FieldValue.serverTimestamp()))
+            true
+        }.await()
+        _pendingRequests.value = _pendingRequests.value.filterNot { it.id == request.id }
     }
 
     suspend fun uploadHelpScreenshot(jpeg: ByteArray, id: String): String? {
@@ -331,11 +405,20 @@ class CloudSync(
 
     suspend fun leaveFamily() {
         val p = store.current.pairing ?: return
-        runCatching {
+        val told = runCatching {
             functions.getHttpsCallable("deleteDevice").call(mapOf("familyId" to p.familyId, "deviceId" to p.deviceId)).await()
-        }
+        }.isSuccess
         stop()
-        store.update { it.copy(pairing = null, helpers = emptyList(), photos = emptyList(), changes = emptyList(), outbox = emptyList()) }
+        lastRemote = null
+        _pendingRequests.value = emptyList()
+        // A notice the parent can still read on the transparency screen: leaving is never silent.
+        val left = ChangeItem(
+            id = "left-${System.currentTimeMillis()}",
+            byName = store.current.config.parentName.ifBlank { "You" },
+            summary = if (told) "Took this phone out of the family. Your helpers were told." else "Took this phone out of the family.",
+            at = System.currentTimeMillis(),
+        )
+        store.update { it.copy(pairing = null, helpers = emptyList(), photos = emptyList(), changes = listOf(left), outbox = emptyList()) }
         runCatching { auth.signOut() }
     }
 

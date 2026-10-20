@@ -2,6 +2,8 @@
 
 export const PHOTO_MAX_EDGE = 1600;
 export const CONTACT_PHOTO_MAX_EDGE = 512;
+/** Photo captions are up to 200 characters (docs/API.md, enforced by firestore.rules). */
+export const PHOTO_CAPTION_MAX = 200;
 export const JPEG_QUALITY = 0.85;
 
 /**
