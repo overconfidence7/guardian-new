@@ -9,6 +9,7 @@ import app.guardianmode.core.GuardianEvent
 import app.guardianmode.core.HomeLayout
 import app.guardianmode.core.HomeTile
 import app.guardianmode.core.ProtectionSettings
+import app.guardianmode.core.CheckInSettings
 import app.guardianmode.core.Reminder
 import app.guardianmode.core.SafeWordSettings
 import app.guardianmode.core.Severity
@@ -47,6 +48,7 @@ object Fixtures {
         ),
         protection = ProtectionSettings(safeWord = SafeWordSettings(enabled = true, word = "bluebird")),
         reminders = listOf(Reminder("r1", "Blood pressure pill", "One white tablet with water", times = listOf("10:30", "20:00"))),
+        checkIn = CheckInSettings(timezone = "America/Chicago"),
     )
 
     val state = LocalState(

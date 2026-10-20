@@ -11,19 +11,22 @@ class ForegroundWatcher(private val context: Context) {
     private val usage = context.getSystemService(UsageStatsManager::class.java)
     private var lastQueryEnd = System.currentTimeMillis() - 10_000L
 
-    /** The package most recently brought to the front since the last poll, if any. */
-    fun poll(now: Long = System.currentTimeMillis()): String? {
+    /** The screen most recently brought to the front since the last poll, if any. */
+    fun poll(now: Long = System.currentTimeMillis()): Foreground? {
         val events = runCatching { usage.queryEvents(lastQueryEnd, now) }.getOrNull() ?: return null
         lastQueryEnd = now
         val event = UsageEvents.Event()
-        var latest: String? = null
+        var latest: Foreground? = null
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) latest = event.packageName
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) latest = Foreground(event.packageName, event.className.orEmpty())
         }
         return latest
     }
 }
+
+/** An app in front, and which of its screens (the lock needs it to tell a permission prompt from the permission manager). */
+data class Foreground(val packageName: String, val className: String)
 
 data class InstalledApp(val packageName: String, val label: String, val controlCapable: Boolean)
 

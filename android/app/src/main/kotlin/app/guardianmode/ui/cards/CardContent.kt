@@ -267,11 +267,11 @@ fun ReminderCard(request: CardRequest, actions: CardActions) {
 @Composable
 fun LockedCard(request: CardRequest, actions: CardActions) {
     val ink = MaterialTheme.colorScheme.onPrimaryContainer
-    val name = request.appLabel.ifBlank { "This app" }
+    val name = request.friendlyLabel
     CardFrame(Icons.Rounded.Lock, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer) {
-        Headline("$name is locked", ink)
+        Headline("${name ?: "This app"} is locked", ink)
         Spacer(Modifier.height(16.dp))
-        Body("This phone is set up to keep things simple. To open $name, enter the code.", ink)
+        Body("This phone is set up to keep things simple. To open ${name ?: "it"}, enter the code.", ink)
         Spacer(Modifier.height(24.dp))
         UnlockForm(
             prompt = "Your code",

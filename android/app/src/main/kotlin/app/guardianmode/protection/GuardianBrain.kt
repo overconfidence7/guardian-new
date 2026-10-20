@@ -61,9 +61,9 @@ class GuardianBrain(
         tracker.onCallState(state, now).flatMap { engine.onCall(it, now) }
     }
 
-    fun onForeground(packageName: String, label: String) {
+    fun onForeground(packageName: String, label: String, className: String = "") {
         // At the Locked level, an app the family didn't pick gets a code screen instead.
-        if (lock.blocks(packageName)) {
+        if (lock.blocks(packageName, className)) {
             cards.show(CardRequest(kind = CardKind.LOCKED, packageName = packageName, appLabel = label))
             return
         }

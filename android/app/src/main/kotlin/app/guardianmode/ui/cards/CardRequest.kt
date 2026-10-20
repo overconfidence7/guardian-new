@@ -22,13 +22,20 @@ data class CardRequest(
     val reminderDetail: String = "",
     val reminderAt: Long = 0,
 ) {
+    /**
+     * The app's name for the parent, or null when Android wouldn't give one. Without
+     * package visibility the label comes back as the package name, which no one should read.
+     */
+    val friendlyLabel: String?
+        get() = appLabel.takeIf { it.isNotBlank() && it != packageName }
+
     val notificationTitle: String
         get() = when (kind) {
             CardKind.PAUSE -> "Hold on a minute"
             CardKind.REMOTE_ACCESS -> if (knownRemoteAccessApp) "This app can control your phone" else "A new app can control your screen"
             CardKind.SAFE_WORD -> "Remember your family safe word"
             CardKind.REMINDER -> reminderTitle
-            CardKind.LOCKED -> "$appLabel is locked"
+            CardKind.LOCKED -> "${friendlyLabel ?: "This app"} is locked"
         }
 
     val notificationText: String

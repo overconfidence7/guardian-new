@@ -160,6 +160,16 @@ class LockPolicyTest {
     }
 
     @Test
+    fun permissionPromptsShowButThePermissionManagerIsCovered() {
+        val pc = "com.google.android.permissioncontroller"
+        assertFalse(LockPolicy.blocks(pc, locked, allowed, unlocked = false, className = "com.android.permissioncontroller.permission.ui.GrantPermissionsActivity"))
+        assertFalse(LockPolicy.blocks(pc, locked, allowed, unlocked = false, className = "com.android.permissioncontroller.role.ui.RequestRoleActivity"))
+        assertTrue(LockPolicy.blocks(pc, locked, allowed, unlocked = false, className = "com.android.permissioncontroller.permission.ui.ManagePermissionsActivity"))
+        assertTrue(LockPolicy.blocks("com.android.permissioncontroller", locked, allowed, unlocked = false, className = "com.android.permissioncontroller.permission.ui.AppPermissionActivity"))
+        assertFalse(LockPolicy.blocks(pc, locked, allowed, unlocked = true, className = "com.android.permissioncontroller.permission.ui.ManagePermissionsActivity"))
+    }
+
+    @Test
     fun remoteUnlockLastsUntilTheLaterOfLocalAndRemote() {
         assertTrue(LockPolicy.isUnlocked(LockSettings(), unlockedUntil = 2_000, now = 1_000))
         assertTrue(LockPolicy.isUnlocked(LockSettings(remoteUnlockUntil = 5_000), unlockedUntil = 0, now = 4_000))

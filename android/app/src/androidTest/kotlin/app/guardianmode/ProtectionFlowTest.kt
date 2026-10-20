@@ -92,6 +92,8 @@ class ProtectionFlowTest {
     @Test fun gm_racc_001_remoteAccessInstallShowsWarning() {
         container.brain.onInstalled("com.anydesk.anydeskandroid", "AnyDesk", controlCapable = true)
         assertThat(device.wait(Until.hasObject(By.textContains("AnyDesk can let someone control your phone")), TIMEOUT)).isTrue()
+        // At the default 1.3x text size the third button sits below the fold on a Pixel 5.
+        assertThat(scrollTo(By.text("I trust this app"))).isTrue()
         device.findObject(By.text("I trust this app")).click()
     }
 

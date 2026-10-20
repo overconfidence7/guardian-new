@@ -53,6 +53,9 @@ class ProtectionController(
 
     /** Called when the phone is unlocked or the home screen is shown: the passive "I'm OK". */
     suspend fun onUserActive() {
+        // The "I'm OK" is only sent when the parent said yes to it and it's still switched on.
+        val state = store.current
+        if (state.consent[Features.CHECK_IN] != true || !state.config.checkIn.enabled) return
         val now = clock()
         if (now - store.current.lastHeartbeatAt < HEARTBEAT_INTERVAL) return
         store.update { it.copy(lastHeartbeatAt = now) }
@@ -74,15 +77,35 @@ class ProtectionController(
 
     suspend fun reportStatus() {
         val consent = store.current.consent
-        val needed = Capabilities.BY_FEATURE.filterKeys { consent[it] == true }.values.flatten().distinct()
-        val missing = capabilities.missing(needed)
+        val missing = missingCapabilities()
         cloud.reportStatus(
             DeviceStatus(
-                protected = missing.isEmpty() && !store.current.isPaused(clock()),
+                protected = !needsAttention() && !store.current.isPaused(clock()),
                 missing = missing.map { it.key },
-                installedApps = runCatching { installs.launchableApps() }.getOrDefault(emptyList()),
+                // The app list is only for helpers setting up home buttons, which the parent may have said no to.
+                installedApps = if (consent[Features.HOME] == true) {
+                    runCatching { installs.launchableApps() }.getOrDefault(emptyList())
+                } else {
+                    emptyList()
+                },
             ),
         )
+    }
+
+    private fun missingCapabilities(): List<Capability> {
+        val consent = store.current.consent
+        val needed = Capabilities.BY_FEATURE.filterKeys { consent[it] == true }.values.flatten().distinct()
+        return capabilities.missing(needed)
+    }
+
+    /**
+     * True when the shield shouldn't say "Protected": a permission is missing for something
+     * the parent turned on, or they turned on neither of the protections that slow a scam down.
+     */
+    fun needsAttention(): Boolean {
+        val consent = store.current.consent
+        val noProtection = consent[Features.PAUSE] != true && consent[Features.CALLS] != true
+        return noProtection || missingCapabilities().isNotEmpty()
     }
 
     companion object {
