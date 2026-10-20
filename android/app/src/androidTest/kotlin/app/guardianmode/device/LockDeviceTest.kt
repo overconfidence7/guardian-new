@@ -275,12 +275,16 @@ class LockDeviceTest {
         assertThat(startCovered("am start -a android.settings.SETTINGS")).isNotNull()
     }
 
-    /** S-11: without overlay and the Home role, CardLauncher only posts a notification, which covers nothing. */
-    @Test fun gm_lock_041_lockedWithoutOverlayOrHomeRoleStillCovers() {
+    /**
+     * S-11: without overlay and the Home role Android won't let Guardian put a code screen
+     * over Settings, so the shield has to say so instead of claiming the phone is locked.
+     */
+    @Test fun gm_lock_041_lockedWithoutOverlayOrHomeRoleSaysCheckMe() {
         rule.setLock(LockLevel.LOCKED)
         rule.shell("appops set ${rule.pkg} SYSTEM_ALERT_WINDOW deny")
         rule.shell("cmd role remove-role-holder android.app.role.HOME ${rule.pkg}")
-        assertThat(startCovered("am start -a android.settings.SETTINGS")).isNotNull()
+        rule.shell("am start -n ${rule.pkg}/app.guardianmode.ui.MainActivity")
+        assertThat(rule.waitFor(By.desc("Check me. What my family can see."))).isTrue()
     }
 
     @Test fun gm_lock_042_quickSettingsAreNotCovered() {
