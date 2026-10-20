@@ -9,6 +9,7 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import app.guardianmode.core.PhoneCallState
+import app.guardianmode.support.GuardianReset
 import app.guardianmode.ui.MainActivity
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -37,8 +38,10 @@ class ProtectionFlowTest {
                 Fixtures.state.copy(pairing = null, outbox = emptyList(), sharedEvents = emptyList(), pausedUntil = 0)
             }
         }
-        // The foreground watcher reports every app change; start each test from Guardian itself
-        // so a package left in front by an earlier test still counts as newly opened.
+        // Forget calls, cards and warnings earlier tests left in the rule engine's memory
+        // (the device tests share this process), then start from Guardian itself so a
+        // package left in front by an earlier test still counts as newly opened.
+        GuardianReset.brain(container)
         container.brain.onForeground(context.packageName, "Guardian Mode")
         device.pressHome()
     }
@@ -47,7 +50,7 @@ class ProtectionFlowTest {
         device.pressBack()
     }
 
-    @Test fun homeScreenShowsFamilyTiles() {
+    @Test fun gm_home_004_homeScreenShowsFamilyTiles() {
         context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         device.wait(Until.hasObject(By.pkg(context.packageName).depth(0)), TIMEOUT)
         // Tiles sit below the photo card, so they may only be laid out after scrolling.
@@ -56,7 +59,7 @@ class ProtectionFlowTest {
         assertThat(found).isTrue()
     }
 
-    @Test fun bankAppAfterUnknownCallShowsPauseCard() {
+    @Test fun gm_pause_001_bankAppAfterUnknownCallShowsPauseCard() {
         val brain = container.brain
         brain.screen("+15559998888", verificationFailed = false, inPhoneContacts = false)
         brain.onCallState(PhoneCallState.RINGING)
@@ -76,7 +79,7 @@ class ProtectionFlowTest {
         assertThat(shared).containsAtLeast("PAUSE_SHOWN", "PAUSE_CONTINUED")
     }
 
-    @Test fun familyCallNeverArmsTripwires() {
+    @Test fun gm_pause_006_familyCallNeverArmsTripwires() {
         val brain = container.brain
         brain.screen("+1 555 010 1111", verificationFailed = false, inPhoneContacts = false)
         brain.onCallState(PhoneCallState.RINGING)
@@ -86,7 +89,7 @@ class ProtectionFlowTest {
         assertThat(device.wait(Until.hasObject(By.text("Hold on a minute.")), 3_000)).isFalse()
     }
 
-    @Test fun remoteAccessInstallShowsWarning() {
+    @Test fun gm_racc_001_remoteAccessInstallShowsWarning() {
         container.brain.onInstalled("com.anydesk.anydeskandroid", "AnyDesk", controlCapable = true)
         assertThat(device.wait(Until.hasObject(By.textContains("AnyDesk can let someone control your phone")), TIMEOUT)).isTrue()
         device.findObject(By.text("I trust this app")).click()

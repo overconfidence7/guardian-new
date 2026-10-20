@@ -168,13 +168,14 @@ def main() -> None:
     ap.add_argument("--run-url", default="")
     ap.add_argument("--sha", default="")
     ap.add_argument("--repo", default="")
+    ap.add_argument("--check-release", action="store_true", help="GM-BASE-008; only meaningful on main")
     args = ap.parse_args()
 
     results_root = Path(args.results)
     catalog = load_catalog()
     known = load_known()
     results = parse_results(results_root) if results_root.exists() else []
-    if args.repo and args.sha:
+    if args.check_release and args.repo and args.sha:
         results.append(release_check(args.repo, args.sha))
     for r in results:
         if r.status == "failed":

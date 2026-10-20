@@ -30,7 +30,7 @@
     ]
   },
   "SEC-3-NOTICE": {
-    "title": "Helpers aren't told when another helper is approved, declined or removed (SECURITY.md \u00a73/\u00a76)",
+    "title": "Helpers aren't told when another helper is approved, declined or removed (SECURITY.md §3/§6)",
     "owner": "unassigned",
     "tests": [
       "[known bug SEC-3 helper notice]"
@@ -48,6 +48,63 @@
     "owner": "unassigned",
     "tests": [
       "[known bug copy differs from SPEC F4]"
+    ]
+  },
+  "TRIPWIRE-MEMORY": {
+    "title": "The 30-minute window after an unknown call lives only in memory (TripwireEngine.kt:44), so no pause card if Android kills Guardian or the phone restarts after the call",
+    "owner": "unassigned",
+    "tests": [
+      "gm_pause_042_processKilledAfterCall",
+      "gm_pause_043_gm_svc_006_pauseCardAfterReboot"
+    ]
+  },
+  "BOOT-API29": {
+    "title": "On Android 10 the service isn't back within 90 s of a restart (fine on Android 16); BOOT_COMPLETED start in Receivers.kt:31",
+    "owner": "unassigned",
+    "tests": [
+      "gm_svc_006_survivesReboot"
+    ]
+  },
+  "HOME-MEMORY": {
+    "title": "Home screen uses 170-210 MB (PSS) against the 150 MB budget in GM-PERF-007",
+    "owner": "unassigned",
+    "tests": [
+      "gm_perf_007_homeScreenMemory"
+    ]
+  },
+  "S-03": {
+    "title": "The notification's \"Pause for 1 hour\" skips the lock code (Receivers.kt:48)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_pause_032_gm_scam_005_gm_tran_010"
+    ]
+  },
+  "S-13": {
+    "title": "Family calls arm pause cards' contact check even when Guardian isn't the call screener (GuardianBrain.kt:38)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm"
+    ]
+  },
+  "S-05": {
+    "title": "The notification keeps saying paused after the pause ends (GuardianService.kt:72 distinctUntilChanged)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_tran_009_notificationStopsSayingPausedWhenThePauseEnds"
+    ]
+  },
+  "S-02": {
+    "title": "Transparency and safe-word screens aren't FLAG_SECURE, so screen sharing can show them",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_tran_015_gm_priv_013"
+    ]
+  },
+  "S-11": {
+    "title": "At Locked without overlay permission or the home role, a code screen only posts a notification (CardLauncher.kt:26)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_lock_041_lockedWithoutOverlayOrHomeRoleStillCovers"
     ]
   }
 }

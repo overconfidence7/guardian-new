@@ -304,21 +304,29 @@ def survives_update(apk: str, **_) -> None:
     """GM-SVC-007: reinstalling over the top keeps settings and restarts the service."""
     fresh_app(apk)
     check(wait_for(service_running, 30) is not None, "service never started")
+    time.sleep(5)  # let the app finish writing its first-run defaults
     before = read_state()
     adb("install", "-r", apk, timeout=300)
     took = wait_for(service_running, 60)
     check(took is not None, "service didn't come back after the update (MY_PACKAGE_REPLACED)")
     after = read_state()
-    check(after.get("onboardingDone") is True and after.get("config") == before.get("config"), "settings changed across the update")
+    check(after.get("onboardingDone") is True, "setup has to be redone after the update")
+    lost = sorted(k for k in before if k not in after)
+    check(not lost, f"settings lost across the update: {lost}")
+    check(before.get("config") == after.get("config"), "the helper's settings changed across the update")
     check(PKG in sh("cmd role get-role-holders android.app.role.HOME"), "Guardian lost the home role after the update")
 
 
 def force_stop_then_home(apk: str, **_) -> None:
     """GM-SVC-008: after a force stop, pressing Home brings protection back."""
     fresh_app(apk)
+    check(wait_for(service_running, 30) is not None, "service never started")
+    pid = sh(f"pidof {PKG}").strip()
     sh(f"am force-stop {PKG}")
-    time.sleep(5)
-    check(not service_running(), "service still running after force-stop")
+    # Guardian is the home app, so Android may relaunch it on its own right away. What
+    # matters is that the old process died and protection is back after Home.
+    time.sleep(2)
+    check(sh(f"pidof {PKG}").strip() != pid, "force-stop didn't stop Guardian")
     sh("input keyevent KEYCODE_HOME")
     took = wait_for(service_running, 60)
     measurements["Force stop: Home to service running"] = f"{took:.0f} s" if took is not None else "never"
