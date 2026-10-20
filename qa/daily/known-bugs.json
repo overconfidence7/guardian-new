@@ -112,5 +112,12 @@
     "tests": [
       "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
     ]
+  },
+  "REMOVE-PERMISSION": {
+    "title": "\"Remove <app>\" on the remote-control warning flashes Android's uninstaller, which closes at once: Guardian doesn't declare REQUEST_DELETE_PACKAGES (AndroidManifest.xml; Launch.kt:45 sends ACTION_DELETE)",
+    "owner": "unassigned",
+    "tests": [
+      "gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation"
+    ]
   }
 }

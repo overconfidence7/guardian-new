@@ -84,9 +84,9 @@ class RobustnessDeviceTest {
         rule.setLock(LockLevel.GUIDED)
         rule.goHome()
         rule.scrollAndTap(By.text("All my apps"))
-        val field = rule.find(By.desc("Lock code"))
-        field.click()
-        field.text = DeviceFixtures.CODE
+        // Typed with real key presses (setting the text directly doesn't always reach Compose).
+        rule.find(By.desc("Lock code")).click()
+        rule.shell("input text ${DeviceFixtures.CODE}")
         rule.hideKeyboard()
         assertThat(rule.seen(By.text("Unlock"))).isTrue()
         val unlock = rule.find(By.text("Unlock")).visibleCenter

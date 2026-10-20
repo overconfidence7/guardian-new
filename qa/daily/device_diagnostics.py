@@ -54,7 +54,7 @@ def per_test_lines(logcat):
         if current and ("GuardianDiag" in line or "GuardianTrace" in line):
             msg = line.split("): ", 1)[-1] if "): " in line else line
             tag = "diag" if "GuardianDiag" in line else "trace"
-            lines[current].append(f"{tag}: {msg[:1500 if tag == 'diag' else 500]}")
+            lines[current].append(f"{tag}: {msg[:3500 if tag == 'diag' else 500]}")
     return lines
 
 

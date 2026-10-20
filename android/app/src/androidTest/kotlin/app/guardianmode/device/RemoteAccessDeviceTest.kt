@@ -9,6 +9,7 @@ import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceFixtures.SARAH
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceRule
+import app.guardianmode.support.KnownBug
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -95,12 +96,22 @@ class RemoteAccessDeviceTest {
         assertThat(opened.data["afterUnknownCall"]).isEqualTo("true")
     }
 
+    /**
+     * REMOVE-PERMISSION: Android's package installer only shows the uninstall confirmation
+     * to apps that declare REQUEST_DELETE_PACKAGES (apps targeting Android 9+); Guardian
+     * doesn't, so "Remove AnyDesk" flashes the installer, which closes at once (CI: the
+     * installer was in front for about 0.2 s, then Guardian). Launch.uninstall sends
+     * ACTION_DELETE without it (AndroidManifest.xml has no REQUEST_DELETE_PACKAGES).
+     */
+    @KnownBug("REMOVE-PERMISSION")
     @Test fun gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation() {
         assertThat(installAndTime(StubApp.ANYDESK, anyDeskWarning)).isNotNull()
         rule.tap("Remove AnyDesk")
         val installers = setOf("com.android.packageinstaller", "com.google.android.packageinstaller")
         assertThat(rule.waitUntil { rule.topPackage() in installers }).isTrue()
         Log.i(TAG, "GM-RACC-006 uninstall dialog package: ${rule.topPackage()}")
+        Thread.sleep(1_000)
+        assertWithMessage("the uninstall confirmation stays up").that(rule.topPackage()).isIn(installers)
         assertThat(rule.seen(By.textContains("AnyDesk"))).isTrue()
         rule.tap("OK")
         assertThat(rule.waitUntil(10_000) { !rule.isInstalled(StubApp.ANYDESK) }).isTrue()

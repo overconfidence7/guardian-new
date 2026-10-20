@@ -445,14 +445,14 @@ class DeviceRule(
         hideKeyboard()
         check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
         var matches = device.findObjects(selector)
-        // Only a heading with the same words in view: the button is further down.
+        // Only a heading with the same words in view on one of Guardian's pages: the button
+        // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
         repeat(3) {
-            if (matches.any { insideClickable(it) }) return@repeat
-            scrollOnce(Direction.DOWN)
+            if (matches.isEmpty() || matches.any { insideClickable(it) } || !scrollOnce(Direction.DOWN)) return@repeat
             matches = device.findObjects(selector)
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
-            ?: error("Nothing on screen matches $selector")
+            ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
         target.click()
         device.waitForIdle()
     }
@@ -462,7 +462,7 @@ class DeviceRule(
 
     private fun insideClickable(obj: UiObject2): Boolean = runCatching {
         var node: UiObject2? = obj
-        repeat(4) {
+        repeat(6) {
             val n = node ?: return@runCatching false
             if (n.isClickable || n.isCheckable) return@runCatching true
             node = n.parent
@@ -477,27 +477,27 @@ class DeviceRule(
      */
     fun seen(selector: BySelector, waitMs: Long = 2_000): Boolean {
         if (waitFor(selector, waitMs)) return true
-        repeat(6) {
-            scrollOnce(Direction.DOWN)
-            if (has(selector)) return true
-        }
-        repeat(12) {
-            scrollOnce(Direction.UP)
-            if (has(selector)) return true
+        // Down to the end of the page, then back up to the top.
+        for (direction in listOf(Direction.DOWN, Direction.UP)) {
+            repeat(25) {
+                val moved = scrollOnce(direction)
+                if (has(selector)) return true
+                if (!moved) return@repeat
+            }
         }
         return false
     }
 
-    private fun scrollOnce(direction: Direction) {
-        val scrollable = runCatching { device.findObject(By.scrollable(true)) }.getOrNull()
-        if (scrollable != null) {
-            runCatching { scrollable.scroll(direction, 0.6f) }
-        } else {
-            val x = device.displayWidth / 2
-            val (from, to) = device.displayHeight * 3 / 4 to device.displayHeight / 4
-            if (direction == Direction.DOWN) device.swipe(x, from, x, to, 20) else device.swipe(x, to, x, from, 20)
-        }
+    /**
+     * Scrolls Guardian's own scrolling page or card one step; false when there is none or
+     * it can't go further that way. Other apps' screens (and the notification shade, which a
+     * swipe would close) are never scrolled.
+     */
+    private fun scrollOnce(direction: Direction): Boolean {
+        val scrollable = runCatching { device.findObject(By.pkg(pkg).scrollable(true)) }.getOrNull() ?: return false
+        val more = runCatching { scrollable.scroll(direction, 0.6f) }.getOrDefault(false)
         device.waitForIdle(500)
+        return more
     }
 
     /**
@@ -531,7 +531,12 @@ class DeviceRule(
     /** True while the on-screen keyboard is up. */
     fun keyboardShown(): Boolean {
         val windows = runCatching { instrumentation.uiAutomation.windows }.getOrDefault(emptyList())
-        if (windows.isNotEmpty()) return windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+        if (windows.isNotEmpty()) {
+            return windows.any { w ->
+                w.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD &&
+                    android.graphics.Rect().also { w.getBoundsInScreen(it) }.let { it.height() > 0 && it.width() > 0 }
+            }
+        }
         return shell("dumpsys input_method").contains("mInputShown=true")
     }
 
@@ -681,7 +686,8 @@ class DeviceRule(
         val log = ownLogcat().lines().filter { line ->
             DIAG_TAGS.any { "$it" in line } && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
         }.takeLast(8)
-        append("log=$log")
+        append("log=$log ")
+        append("screen=${runCatching { screenSummary().take(1_500) }.getOrDefault("?")}")
     }
 
     /** Apps brought to the front in the last [windowMs], as Usage access reports them to Guardian. */
@@ -698,11 +704,22 @@ class DeviceRule(
         out.takeLast(12)
     }.getOrDefault(emptyList())
 
-    fun dumpUi(reason: String) {
+    /**
+     * What's on screen, compactly (one entry per node with text or a description), to
+     * logcat tag UiDump. Kept short on purpose: whole hierarchy dumps filled the log buffer
+     * and pushed out the traces the failure report needs.
+     */
+    fun dumpUi(reason: String) = Log.i("UiDump", "---- $reason ---- ${screenSummary()}")
+
+    fun screenSummary(): String {
         val out = java.io.ByteArrayOutputStream()
         runCatching { device.dumpWindowHierarchy(out) }
-        Log.i("UiDump", "---- $reason ----")
-        out.toString().chunked(3_000).forEach { Log.i("UiDump", it) }
+        val nodes = Regex("<node [^>]*>").findAll(out.toString()).mapNotNull { m ->
+            fun attr(name: String) = Regex("$name=\"([^\"]*)\"").find(m.value)?.groupValues?.get(1).orEmpty()
+            val text = attr("text").ifBlank { attr("content-desc") }
+            if (text.isBlank()) null else "${attr("package").substringAfterLast('.')}:${text.take(60)}${if (attr("clickable") == "true") "*" else ""}"
+        }.toList()
+        return nodes.joinToString(" | ").take(3_500)
     }
 
     companion object {
