@@ -159,7 +159,9 @@ class LockDeviceTest {
                 rule.has(settings) || rule.recentResumes(System.currentTimeMillis() - start + 500).any { it.startsWith("settings@") }
             }
             if (opened) {
-                assertWithMessage("Quick Settings gear").that(rule.timeUntil(settings, DeviceRule.TIMEOUT, start)).isNotNull()
+                // Timed from when Settings came up, not from the tap: the shade can take most
+                // of TIMEOUT to collapse and launch Settings on a slow emulator.
+                assertWithMessage("Quick Settings gear").that(rule.timeUntil(settings, DeviceRule.TIMEOUT)).isNotNull()
             } else {
                 Log.w(TAG, "GM-LOCK-031: the Quick Settings gear didn't open Settings on this image; top=${rule.topPackage()}")
                 rule.closeShade()
