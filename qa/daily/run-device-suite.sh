@@ -25,6 +25,10 @@ for apk in "$STUBS"/*/debug/*.apk; do
   esac
 done
 
+# A bigger log buffer, so the end-of-run logcat still holds the early tests' traces.
+adb logcat -G 32M >/dev/null 2>&1 || true
+adb logcat -c >/dev/null 2>&1 || true
+
 cd "$ROOT/android"
 args=(connectedDebugAndroidTest --no-daemon --continue)
 if [ "$KNOWN" != "true" ]; then
@@ -34,6 +38,10 @@ fi
 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
 mkdir -p "$OUT/instrumented"
 cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented/" 2>/dev/null || true
+# Each failing test's message, what the test traced (calls, app opens) and the one-line
+# diagnostics DeviceRule logs on failure, as annotations: they can be read through the
+# GitHub API without downloading logs or artifacts.
+python3 "$ROOT/qa/daily/device_diagnostics.py" "$OUT/instrumented" "$OUT/logcat-instrumented.txt" "$(basename "$OUT")" || true
 
 # Host-side checks: reboots, reinstalls, process death, Doze, manifest audit.
 if [ "$HOST" = "true" ]; then
