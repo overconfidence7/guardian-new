@@ -94,13 +94,13 @@ class RobustnessDeviceTest {
             repeat(2) { rule.device.click(unlock.x, unlock.y) }
         }
         doubleTapUnlock()
-        if (!rule.waitText("Your family hasn't added any apps yet.", 4_000)) {
+        if (!rule.waitText("Phone settings", 4_000)) {
             // Setting the text directly didn't reach the Compose field; type it with key presses.
             rule.find(By.desc("Lock code")).click()
             rule.shell("input text ${DeviceFixtures.CODE}")
             doubleTapUnlock()
         }
-        assertThat(rule.waitText("Your family hasn't added any apps yet.")).isTrue()
+        assertWithMessage("the app list (Notes, Phone settings) opens").that(rule.waitText("Phone settings")).isTrue()
         assertThat(rule.state.lockFailures).isEqualTo(0)
     }
 }

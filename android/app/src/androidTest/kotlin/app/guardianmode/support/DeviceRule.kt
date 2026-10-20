@@ -302,10 +302,36 @@ class DeviceRule(
         if (hangUp) hangUp(number)
     }
 
+    /**
+     * Answers the ringing call. The console's `gsm accept` makes the modem's call active, and
+     * on Android 13+ Telecom follows; on Android 10 Telecom keeps ringing (the heads-up still
+     * offers Answer, no OFFHOOK is broadcast) although the registry already says off-hook. So
+     * Telecom itself is checked, and asked to answer (as adb's shell could) while it still rings.
+     */
     fun answer(number: String) {
         runCatching { EmulatorConsole.accept(number) }
-        if (!waitForCallState(2, timeoutMs = 3_000)) shell("input keyevent KEYCODE_CALL")
+        waitForCallState(2, timeoutMs = 3_000)
+        if (!waitUntil(1_500) { !incomingCallShown() }) {
+            Log.w(TAG, "incoming-call heads-up still up after gsm accept; answering through Telecom")
+            runCatching {
+                asShell(Manifest.permission.ANSWER_PHONE_CALLS) {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(android.telecom.TelecomManager::class.java).acceptRingingCall()
+                }
+            }
+            if (!waitUntil(3_000) { !incomingCallShown() }) shell("input keyevent KEYCODE_CALL")
+            waitUntil(3_000) { !incomingCallShown() }
+        }
+        if (callState() != 2) shell("input keyevent KEYCODE_CALL")
     }
+
+    /**
+     * Whether the phone still shows the call as ringing: the incoming-call heads-up's Answer
+     * button. (TelecomManager.isRinging is a system API, and the registry follows the modem.)
+     */
+    fun incomingCallShown(): Boolean =
+        device.hasObject(By.pkg("com.android.systemui").desc("Answer")) ||
+            device.hasObject(By.pkg("com.android.systemui").text("Incoming call"))
 
     fun hangUp(number: String) {
         runCatching { EmulatorConsole.hangUp(number) }
@@ -709,7 +735,13 @@ class DeviceRule(
         append("shared=${sharedTypes()} paused=${state.isPaused(now)} lock=${state.config.lock.level}/${if (state.lockCodeHash.isEmpty()) "no code" else "code"} ")
         append("missing=${runCatching { container.capabilities.missing().map { it.key } }.getOrDefault(emptyList())} ")
         append("resumedEvents=${recentResumes(30_000)} ")
-        append("calls=${runCatching { callLog(now - 120_000) }.getOrDefault(emptyList()).map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
+        val calls = runCatching { callLog(now - 120_000) }.getOrDefault(emptyList())
+        append("calls=${calls.map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
+        if (calls.isEmpty()) {
+            // Tells "nothing logged" apart from "the provider wouldn't answer the shell".
+            val raw = runCatching { shell("content query --uri content://call_log/calls --projection type:date") }.getOrElse { "?$it" }
+            append("callLogRaw=${raw.lines().size} lines: ${raw.trim().takeLast(160).replace("\n", " / ")} ")
+        }
         val log = ownLogcat().lines().filter { line ->
             DIAG_TAGS.any { "$it" in line } && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
         }.takeLast(8)
