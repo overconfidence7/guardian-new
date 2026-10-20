@@ -153,7 +153,17 @@ class LockDeviceTest {
         if (rule.waitFor(gear, 4_000)) {
             val start = System.currentTimeMillis()
             rule.device.findObject(gear).click()
-            assertWithMessage("Quick Settings gear").that(rule.timeUntil(settings, DeviceRule.TIMEOUT, start)).isNotNull()
+            // Some images' gear opens a tile editor or asks to unlock first; only a Settings
+            // that actually came up must be covered.
+            val opened = rule.waitUntil(DeviceRule.TIMEOUT) {
+                rule.has(settings) || rule.recentResumes(System.currentTimeMillis() - start + 500).any { it.startsWith("settings@") }
+            }
+            if (opened) {
+                assertWithMessage("Quick Settings gear").that(rule.timeUntil(settings, DeviceRule.TIMEOUT, start)).isNotNull()
+            } else {
+                Log.w(TAG, "GM-LOCK-031: the Quick Settings gear didn't open Settings on this image; top=${rule.topPackage()}")
+                rule.closeShade()
+            }
         } else {
             Log.w(TAG, "GM-LOCK-031: no Settings gear found in Quick Settings on this image")
             rule.closeShade()

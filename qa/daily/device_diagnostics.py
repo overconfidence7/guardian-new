@@ -78,7 +78,7 @@ def main():
         # Keep the last few traces (closest to the failure) and the diagnostics line.
         diag = [l for l in extra if l.startswith("diag")]
         trace = [l for l in extra if l.startswith("trace")][-6:]
-        blocks.append("\n".join([f"== {cls}.{name}: {msg}"] + ["  " + l for l in trace + diag]))
+        blocks.append("\n".join([f"== {cls}.{name}: {msg}"] + ["  " + l for l in diag + trace]))
     notices, chunk = [], ""
     for b in blocks:
         if chunk and len(chunk) + len(b) > MAX_CHARS:

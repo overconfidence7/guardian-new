@@ -84,13 +84,22 @@ class RobustnessDeviceTest {
         rule.setLock(LockLevel.GUIDED)
         rule.goHome()
         rule.scrollAndTap(By.text("All my apps"))
-        // Typed with real key presses (setting the text directly doesn't always reach Compose).
-        rule.find(By.desc("Lock code")).click()
-        rule.shell("input text ${DeviceFixtures.CODE}")
-        rule.hideKeyboard()
-        assertThat(rule.seen(By.text("Unlock"))).isTrue()
-        val unlock = rule.find(By.text("Unlock")).visibleCenter
-        repeat(2) { rule.device.click(unlock.x, unlock.y) }
+        val field = rule.find(By.desc("Lock code"))
+        field.click()
+        field.text = DeviceFixtures.CODE
+        fun doubleTapUnlock() {
+            rule.hideKeyboard()
+            assertThat(rule.seen(By.text("Unlock"))).isTrue()
+            val unlock = rule.find(By.text("Unlock")).visibleCenter
+            repeat(2) { rule.device.click(unlock.x, unlock.y) }
+        }
+        doubleTapUnlock()
+        if (!rule.waitText("Your family hasn't added any apps yet.", 4_000)) {
+            // Setting the text directly didn't reach the Compose field; type it with key presses.
+            rule.find(By.desc("Lock code")).click()
+            rule.shell("input text ${DeviceFixtures.CODE}")
+            doubleTapUnlock()
+        }
         assertThat(rule.waitText("Your family hasn't added any apps yet.")).isTrue()
         assertThat(rule.state.lockFailures).isEqualTo(0)
     }

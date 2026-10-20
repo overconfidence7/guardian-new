@@ -497,6 +497,9 @@ class DeviceRule(
      */
     fun seen(selector: BySelector, waitMs: Long = 2_000): Boolean {
         if (waitFor(selector, waitMs)) return true
+        // The keyboard shrinks what a card or page can show; put it away before looking further.
+        hideKeyboard()
+        if (has(selector)) return true
         // Down to the end of the page, then back up to the top.
         for (direction in listOf(Direction.DOWN, Direction.UP)) {
             repeat(25) {
@@ -569,6 +572,10 @@ class DeviceRule(
 
     /** Back, as the parent means it: the keyboard goes away first if it's up, then the screen goes back. */
     fun back() {
+        // A code screen focuses its field and the keyboard slides up a moment later; let it
+        // settle so this Back isn't spent closing a keyboard that wasn't up yet.
+        device.waitForIdle()
+        if (has(By.desc("Lock code"))) waitUntil(1_500) { keyboardShown() }
         hideKeyboard()
         device.pressBack()
         device.waitForIdle()
