@@ -12,6 +12,8 @@ const PORT = Number(process.env.E2E_PORT ?? 5173);
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // The emulator specs share one Firebase emulator and one clears it in beforeAll.
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
@@ -30,7 +32,7 @@ export default defineConfig({
     },
     {
       name: 'emulator',
-      testMatch: /dashboard\.e2e\.ts/,
+      testMatch: /\.e2e\.ts$/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
   ],

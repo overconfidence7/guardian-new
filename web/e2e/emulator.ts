@@ -76,3 +76,57 @@ export async function createHelperAccount(email: string, password: string, displ
   });
   if (!res.ok) throw new Error(`helper sign-up failed: ${res.status} ${await res.text()}`);
 }
+
+/** Like createHelperAccount, but returns the new helper's uid and ID token for callables. */
+export async function createHelper(email: string, password: string, displayName: string): Promise<{ uid: string; idToken: string }> {
+  const res = await fetch(`${AUTH_URL}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-api-key`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName, returnSecureToken: true }),
+  });
+  if (!res.ok) throw new Error(`helper sign-up failed: ${res.status} ${await res.text()}`);
+  const body = (await res.json()) as { localId: string; idToken: string };
+  return { uid: body.localId, idToken: body.idToken };
+}
+
+/** An email that no other spec file (or earlier run against the same emulators) uses. */
+export function uniqueEmail(name: string): string {
+  return `${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
+/**
+ * Create an event the way the phone does (CloudSync.flushOutbox), through the security
+ * rules with the phone's own ID token: a create-only write whose createdAt is the server's
+ * request time.
+ */
+export async function phoneCreateEvent(
+  idToken: string,
+  path: { familyId: string; deviceId: string; eventId: string },
+  event: { type: string; severity: string; data: Record<string, string> },
+): Promise<void> {
+  const name = `projects/${PROJECT_ID}/databases/(default)/documents/families/${path.familyId}/devices/${path.deviceId}/events/${path.eventId}`;
+  const data = Object.fromEntries(Object.entries(event.data).map(([k, v]) => [k, { stringValue: v }]));
+  const res = await fetch(`http://${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents:commit`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({
+      writes: [
+        {
+          update: {
+            name,
+            fields: {
+              type: { stringValue: event.type },
+              severity: { stringValue: event.severity },
+              at: { integerValue: String(Date.now()) },
+              data: { mapValue: { fields: data } },
+              source: { stringValue: 'device' },
+            },
+          },
+          currentDocument: { exists: false },
+          updateTransforms: [{ fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' }],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw new Error(`event write refused: ${res.status} ${await res.text()}`);
+}

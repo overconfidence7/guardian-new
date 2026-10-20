@@ -4,7 +4,8 @@
     "title": "Dashboard settings saves are rejected (serverTimestamp copied by stripUndefined)",
     "owner": "Antigravity test suite thread",
     "tests": [
-      "helper sets up a family, pairs the phone, edits settings and sees alerts"
+      "helper sets up a family, pairs the phone, edits settings and sees alerts",
+      "[known bug DASH-SAVE]"
     ]
   },
   "LONGCALL-URGENT": {
@@ -12,6 +13,41 @@
     "owner": "unassigned",
     "tests": [
       "gm_call_003_urgentAfterBankAppEvenWithPauseCardsOff"
+    ]
+  },
+  "DASH-LIST": {
+    "title": "Dashboard's \"my families\" query is denied by the rules, so a returning helper lands on \"create a family\" (firestore.rules:152)",
+    "owner": "unassigned",
+    "tests": [
+      "[known bug DASH-LIST]"
+    ]
+  },
+  "S-17": {
+    "title": "Helpers can make risky changes (numbers, trusted apps, turning protection off, remote unlock) without the parent's approval",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "[known bug S-17]"
+    ]
+  },
+  "SEC-3-NOTICE": {
+    "title": "Helpers aren't told when another helper is approved, declined or removed (SECURITY.md \u00a73/\u00a76)",
+    "owner": "unassigned",
+    "tests": [
+      "[known bug SEC-3 helper notice]"
+    ]
+  },
+  "EVENT-KEYS": {
+    "title": "Event data with undocumented keys (a phone number, a message) is accepted by the rules (firestore.rules:74)",
+    "owner": "unassigned",
+    "tests": [
+      "[known bug event data keys unchecked]"
+    ]
+  },
+  "COPY-F4": {
+    "title": "Pause-card push wording differs from SPEC F4 (copy.ts:137,147)",
+    "owner": "unassigned",
+    "tests": [
+      "[known bug copy differs from SPEC F4]"
     ]
   }
 }
