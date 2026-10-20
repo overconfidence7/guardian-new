@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { friendlyTime, notificationCopy, type CopyEvent } from "../../src/copy.js";
-import { EVENT_TYPES, SEVERITIES, type EventType, type Severity } from "../../src/lib/model.js";
+import { askPhrase, donePhrase } from "../../src/lib/changeRequests.js";
+import { EVENT_TYPES, SERVER_EVENT_TYPES, SEVERITIES, type EventType, type ServerEventType, type Severity } from "../../src/lib/model.js";
 
 const ctx = { parentName: "Margaret" };
 
@@ -28,8 +29,20 @@ describe("notificationCopy", () => {
   it("PAUSE_SHOWN after a call", () => {
     expect(copy("PAUSE_SHOWN", { app: "Chase", duringCall: "false", minutesSinceCall: "4" })).toEqual({
       title: "Margaret paused before opening Chase",
-      body: "Margaret opened Chase 4 minutes after a call from an unknown number, so the phone showed a pause card first.",
+      body: "Margaret opened Chase 4 minutes after a call from an unknown number. A pause card was shown.",
     });
+  });
+
+  it("PAUSE_SHOWN matches SPEC F4 word for word", () => {
+    // docs/SPEC.md F4, and the dashboard's wording in web/src/lib/eventText.ts.
+    const event: CopyEvent = {
+      type: "PAUSE_SHOWN",
+      severity: "NOTICE",
+      data: { app: "Chase", category: "BANK", duringCall: "false", minutesSinceCall: "4" },
+    };
+    expect(notificationCopy(event, { parentName: "Mom" }).body).toBe(
+      "Mom opened Chase 4 minutes after a call from an unknown number. A pause card was shown.",
+    );
   });
 
   it("PAUSE_SHOWN singular minute and zero minutes", () => {
@@ -41,7 +54,7 @@ describe("notificationCopy", () => {
 
   it("PAUSE_SHOWN during a call", () => {
     expect(copy("PAUSE_SHOWN", { app: "Chase", duringCall: "true" }, "URGENT").body).toBe(
-      "Margaret opened Chase during a call with an unknown number, so the phone showed a pause card first.",
+      "Margaret opened Chase during a call with an unknown number. A pause card was shown.",
     );
   });
 
@@ -162,6 +175,83 @@ describe("notificationCopy", () => {
           expect(text).not.toContain("undefined");
           expect(text).not.toContain("null");
         });
+      }
+    }
+  });
+});
+
+describe("family notices (SECURITY.md §3 and §6)", () => {
+  const notice = (type: ServerEventType, data: Record<string, string>, severity: Severity = "NOTICE") =>
+    notificationCopy({ type, severity, data }, ctx);
+
+  it("a helper added, declined, removed or leaving", () => {
+    expect(notice("HELPER_CHANGED", { change: "added", name: "David" }, "URGENT")).toEqual({
+      title: "David is now helping with Margaret’s phone",
+      body: "Margaret said yes to David on the phone. David can now change Margaret’s settings and will get these notices too.",
+    });
+    expect(notice("HELPER_CHANGED", { change: "declined", name: "Support Desk" })).toEqual({
+      title: "Margaret said no to Support Desk",
+      body: "Support Desk asked to help with Margaret’s phone, and Margaret said no. Nothing changed.",
+    });
+    expect(notice("HELPER_CHANGED", { change: "removed", name: "David" }).body).toBe(
+      "Margaret removed David from the family, so David can’t see or change anything on Margaret’s phone now.",
+    );
+    expect(notice("HELPER_CHANGED", { change: "removed", name: "David", by: "Sarah" }).body).toBe(
+      "Sarah removed David from the family, so David can’t see or change anything on Margaret’s phone now.",
+    );
+    expect(notice("HELPER_CHANGED", { change: "left", name: "David" }).title).toBe("David stopped helping with Margaret’s phone");
+  });
+
+  it("a risky change allowed or declined on the phone", () => {
+    const what = askPhrase({ longCallAlertEnabled: false, trustedPackages: ["com.anydesk.anydeskandroid"] });
+    expect(what).toBe("trust a remote-control app and turn off long-call notices");
+    expect(notice("CHANGE_REQUEST_ANSWERED", { byName: "David", approved: "true", what }, "URGENT")).toEqual({
+      title: "Margaret said yes to a change from David",
+      body: "David asked to trust a remote-control app and turn off long-call notices. Margaret said yes on the phone, so the change is in place.",
+    });
+    expect(notice("CHANGE_REQUEST_ANSWERED", { byName: "David", approved: "false", what }).body).toBe(
+      "David asked to trust a remote-control app and turn off long-call notices. Margaret said no on the phone, so nothing changed.",
+    );
+  });
+
+  it("change phrases follow the values asked for", () => {
+    expect(askPhrase({ pauseTripwiresEnabled: true })).toBe("turn on the pause before sending money");
+    expect(donePhrase({ family: [], remoteUnlockUntil: 1, remoteAccessAlarmEnabled: false })).toBe(
+      "changed the family’s phone numbers or who gets called first, turned off the remote-control app warning and unlocked the phone for a while",
+    );
+    expect(askPhrase({})).toBe("change a protection setting");
+  });
+
+  it("a phone leaving the family", () => {
+    expect(notice("PHONE_LEFT", {}).title).toBe("Margaret stopped using Guardian Mode");
+    expect(notice("PHONE_LEFT", { by: "Sarah" }).body).toBe(
+      "Sarah removed Margaret’s phone from the family, so you won’t hear from it anymore.",
+    );
+  });
+
+  it("sounds like a person: no alarm or watching words, no dashes, no internal names", () => {
+    const cases: [ServerEventType, Record<string, string>][] = [
+      ...["added", "declined", "removed", "left", "other"].map((change): [ServerEventType, Record<string, string>] => [
+        "HELPER_CHANGED",
+        { change, name: "David", by: "Sarah" },
+      ]),
+      ["HELPER_CHANGED", {}],
+      ["CHANGE_REQUEST_ANSWERED", { byName: "David", approved: "true", what: askPhrase({ family: [] }) }],
+      ["CHANGE_REQUEST_ANSWERED", {}],
+      ["PHONE_LEFT", {}],
+      ["PHONE_LEFT", { by: "Sarah" }],
+    ];
+    for (const type of SERVER_EVENT_TYPES) expect(cases.some(([t]) => t === type)).toBe(true);
+    for (const [type, data] of cases) {
+      for (const severity of SEVERITIES) {
+        const c = notice(type, data, severity);
+        const text = `${c.title} ${c.body}`;
+        expect(text).toContain("Margaret");
+        expect(text).not.toMatch(/\b(scam|fraud|danger\w*|alert\w*|alarm|monitor\w*|track\w*|urgent)\b/i);
+        expect(text).not.toMatch(/ [-–—] |—/);
+        expect(text).not.toMatch(/undefined|null|[A-Z]{2,}_[A-Z]/);
+        expect(c.title).not.toMatch(/[.!]$/);
+        expect(c.body).toMatch(/\.$/);
       }
     }
   });

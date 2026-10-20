@@ -44,10 +44,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val pending = goAsync()
         container.appScope.launch {
             try {
-                when (intent.action) {
-                    ACTION_PAUSE_HOUR -> container.protection.pauseFor(60 * 60_000L)
-                    ACTION_RESUME -> container.protection.resume()
-                }
+                // Pausing isn't handled here: it goes through MainActivity so the lock code is asked for.
+                if (intent.action == ACTION_RESUME) container.protection.resume()
             } finally {
                 pending.finish()
             }
@@ -55,7 +53,6 @@ class NotificationActionReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        const val ACTION_PAUSE_HOUR = "app.guardianmode.PAUSE_HOUR"
         const val ACTION_RESUME = "app.guardianmode.RESUME"
     }
 }

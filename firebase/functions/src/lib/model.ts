@@ -25,6 +25,18 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/**
+ * Notices only the server writes, about the family itself rather than the phone
+ * (docs/SECURITY.md §3 and §6). The phone never sends or reads these, so they are not in
+ * Model.kt's EventType or the rules' allowlist.
+ *   HELPER_CHANGED           a helper was added, declined, removed or left
+ *   CHANGE_REQUEST_ANSWERED  the parent allowed or declined a helper's risky change
+ *   PHONE_LEFT               a phone left the family (pushed directly; its events go with it)
+ */
+export const SERVER_EVENT_TYPES = ["HELPER_CHANGED", "CHANGE_REQUEST_ANSWERED", "PHONE_LEFT"] as const;
+export type ServerEventType = (typeof SERVER_EVENT_TYPES)[number];
+export type AnyEventType = EventType | ServerEventType;
+
 export const SEVERITIES = ["INFO", "NOTICE", "URGENT"] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
@@ -192,6 +204,11 @@ export function readCheckIn(raw: unknown): CheckInSettings {
 
 export function isEventType(value: unknown): value is EventType {
   return typeof value === "string" && (EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** Any type the server knows how to word and deliver: the phone's and its own. */
+export function isDeliverableEventType(value: unknown): value is AnyEventType {
+  return isEventType(value) || (typeof value === "string" && (SERVER_EVENT_TYPES as readonly string[]).includes(value));
 }
 
 export function isSeverity(value: unknown): value is Severity {

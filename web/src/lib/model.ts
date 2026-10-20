@@ -51,6 +51,15 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/**
+ * Family notices only the server writes (firebase/functions/src/lib/model.ts
+ * SERVER_EVENT_TYPES): a helper added or removed, a risky change answered on the phone.
+ * Not in Model.kt; the phone never sends them.
+ */
+export const SERVER_EVENT_TYPES = ['HELPER_CHANGED', 'CHANGE_REQUEST_ANSWERED', 'PHONE_LEFT'] as const;
+export type ServerEventType = (typeof SERVER_EVENT_TYPES)[number];
+export type AnyEventType = EventType | ServerEventType;
+
 export const SEVERITIES = ['INFO', 'NOTICE', 'URGENT'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 

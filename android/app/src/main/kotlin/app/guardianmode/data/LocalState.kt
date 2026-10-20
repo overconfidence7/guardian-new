@@ -76,6 +76,8 @@ data class LocalState(
     val unlockedUntil: Long = 0,
     val lockFailures: Int = 0,
     val lockRetryAt: Long = 0,
+    /** When the last answered unknown call ended, so pause cards stay armed if Android restarts Guardian. */
+    val lastUnknownCallEndedAt: Long? = null,
 ) {
     fun isPaused(now: Long) = pausedUntil > now
 

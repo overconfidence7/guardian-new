@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, type CallableRequest } from "firebase-functions/v2/https";
 import { callerOf, parseInput } from "../lib/auth.js";
 import { paths, readFamily, stringField } from "../lib/families.js";
+import { announceToFamily } from "../lib/familyNotices.js";
 import { db } from "../lib/firebase.js";
 import { memberStatus, prepareFamilyContactAdd } from "../lib/members.js";
 import { planLimits } from "../lib/model.js";
@@ -12,8 +13,10 @@ export async function handleApproveHelper(request: CallableRequest<unknown>): Pr
   const caller = callerOf(request);
   const input = parseInput(approveHelperInput, request.data);
   const firestore = db();
+  let outcome: HelperOutcome | null = null;
 
   await firestore.runTransaction(async (tx) => {
+    outcome = null;
     const familyRef = paths.family(firestore, input.familyId);
     const memberRef = paths.member(firestore, input.familyId, input.uid);
     const [familySnap, memberSnap] = await Promise.all([tx.get(familyRef), tx.get(memberRef)]);
@@ -32,8 +35,10 @@ export async function handleApproveHelper(request: CallableRequest<unknown>): Pr
       });
     }
 
+    const name = stringField(member, "displayName", "Helper");
     if (!input.approve) {
       tx.delete(memberRef);
+      outcome = { change: "declined", name };
       return;
     }
 
@@ -49,12 +54,36 @@ export async function handleApproveHelper(request: CallableRequest<unknown>): Pr
 
     tx.update(memberRef, { status: "active", approvedAt: FieldValue.serverTimestamp() });
     tx.update(familyRef, { memberUids: FieldValue.arrayUnion(input.uid) });
-    addContact?.(
-      { uid: input.uid, name: stringField(member, "displayName", "Helper"), phone },
-      { uid: caller.uid, name: "", kind: "device" },
-    );
+    addContact?.({ uid: input.uid, name, phone }, { uid: caller.uid, name: "", kind: "device" });
+    outcome = { change: "added", name };
   });
+
+  // docs/SECURITY.md §3 and §6: every helper hears about it either way, and a new
+  // helper shows in the phone's "Recent changes". A retried tap (already active) is quiet.
+  const done = outcome as HelperOutcome | null;
+  if (done) {
+    await announceToFamily(
+      firestore,
+      input.familyId,
+      {
+        type: "HELPER_CHANGED",
+        severity: done.change === "added" ? "URGENT" : "NOTICE",
+        data: { change: done.change, name: done.name },
+      },
+      {
+        preferDeviceUid: caller.uid,
+        ...(done.change === "added"
+          ? { phoneChange: { byUid: input.uid, byName: done.name, summary: "Became one of your helpers" } }
+          : {}),
+      },
+    );
+  }
   return {};
+}
+
+interface HelperOutcome {
+  change: "added" | "declined";
+  name: string;
 }
 
 export const approveHelper = onCall(handleApproveHelper);

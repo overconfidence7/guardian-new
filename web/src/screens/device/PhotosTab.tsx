@@ -9,7 +9,7 @@ import { EmptyState, Spinner } from '../../components/EmptyState';
 import { Field, Input } from '../../components/Field';
 import { Icon } from '../../components/Icon';
 import { useToast } from '../../components/Toast';
-import { PHOTO_MAX_EDGE, resizeImage, type ResizedImage } from '../../lib/image';
+import { PHOTO_CAPTION_MAX, PHOTO_MAX_EDGE, resizeImage, type ResizedImage } from '../../lib/image';
 import { relativeTime } from '../../lib/time';
 import type { Device, PhotoDoc } from '../../lib/types';
 
@@ -156,7 +156,7 @@ export function PhotosTab({ familyId, device }: { familyId: string; device: Devi
       >
         {pending ? <img className="upload-preview" src={pending.preview} alt="The photo you chose" /> : null}
         <Field label="Caption" optional>
-          {(ids) => <Input {...ids} maxLength={120} placeholder="Emma’s first day of school!" value={caption} onChange={(e) => setCaption(e.target.value)} />}
+          {(ids) => <Input {...ids} maxLength={PHOTO_CAPTION_MAX} placeholder="Emma’s first day of school!" value={caption} onChange={(e) => setCaption(e.target.value)} />}
         </Field>
         {pending ? (
           <p className="xsmall subtle">

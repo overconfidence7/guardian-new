@@ -40,8 +40,15 @@ class TripwireEngine(
     private val config: () -> DeviceConfig,
     private val catalog: AppCatalog = AppCatalog(),
     private val newId: () -> String,
+    /** When the last answered unknown call ended, as saved before Android stopped the app or the phone restarted. */
+    restoredCallEndedAt: Long? = null,
 ) {
-    private var lastUnknownCallEndedAt: Long? = null
+    /**
+     * When the last answered unknown call ended. The phone saves it whenever it changes,
+     * so the 30-minute window survives Guardian being killed or the phone restarting.
+     */
+    var lastUnknownCallEndedAt: Long? = restoredCallEndedAt
+        private set
     private var activeUnknown: CallSession? = null
     private var longCallShared = false
     private var riskyAppOpenedDuringCall = false
@@ -123,10 +130,11 @@ class TripwireEngine(
         }
 
         val pause = p.pauseTripwires
-        if (!pause.enabled || !armed) return emptyList()
-        val category = catalog.categoryOf(packageName, p) ?: return emptyList()
-        if (category == AppCategory.REMOTE_ACCESS || category !in pause.categories) return emptyList()
+        val category = catalog.categoryOf(packageName, p)?.takeIf { it != AppCategory.REMOTE_ACCESS && it in pause.categories }
+            ?: return emptyList()
+        // Noted even with pause cards off, so the long-call notice can still say a money app was opened.
         if (duringCall) riskyAppOpenedDuringCall = true
+        if (!pause.enabled || !armed) return emptyList()
         if (packageName in continuedPackages) return emptyList()
         if (pauseShownAt[category] != null) {
             // Already asked about this kind of app for this call; asking again is nagging.
@@ -156,7 +164,11 @@ class TripwireEngine(
                 continuedPackages += packageName
                 listOf(share(EventType.PAUSE_CONTINUED, Severity.NOTICE, now, "app" to appLabel))
             }
-            PauseOutcome.CLOSED -> emptyList()
+            PauseOutcome.CLOSED -> {
+                // "Go to my home screen" isn't an answer, so the next open during this call asks again.
+                catalog.categoryOf(packageName, protection)?.let { pauseShownAt.remove(it) }
+                emptyList()
+            }
         }
 
     fun onPackageInstalled(packageName: String, appLabel: String, controlCapable: Boolean, now: Long): List<GuardianAction> {

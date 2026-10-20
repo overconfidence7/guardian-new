@@ -138,8 +138,10 @@ class HelpActivity : ComponentActivity() {
                 Text(
                     if (paired) {
                         "We'll take a picture of your screen so $name can see what's confusing. You'll see the picture before it's sent."
+                    } else if (helper != null) {
+                        "You can call ${helper.name} for help."
                     } else {
-                        "You can call your family for help."
+                        "No one is set up to help yet. You can still call someone you trust, and they can help you add them in Guardian's settings."
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -149,6 +151,8 @@ class HelpActivity : ComponentActivity() {
                     if (paired) BigButton("Take a picture of my screen", ::takePicture, icon = Icons.Rounded.CameraAlt)
                     if (helper != null) {
                         BigButton("Call ${helper.name}", { Launch.call(this@HelpActivity, helper.phone) }, icon = Icons.Rounded.Call, primary = !paired)
+                    } else if (!paired) {
+                        BigButton("Call someone", { Launch.dialer(this@HelpActivity) }, icon = Icons.Rounded.Call)
                     }
                 }
             }

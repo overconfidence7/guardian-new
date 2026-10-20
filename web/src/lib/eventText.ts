@@ -4,12 +4,12 @@
  * "scam", "fraud", "danger" or "alert"; nothing the event doesn't carry). The dashboard
  * adds an optional calm suggestion of what to do.
  */
-import type { EventType, Severity } from './model';
+import type { AnyEventType, Severity } from './model';
 import { featureLabel, permissionLabel } from './features';
 import { formatHHmm } from './time';
 
 export interface EventLike {
-  type: EventType;
+  type: AnyEventType;
   severity: Severity;
   data: Record<string, string>;
 }
@@ -181,6 +181,56 @@ export function describeEvent(event: EventLike, parentName: string): EventText {
         icon: 'sun',
       };
     }
+    case 'HELPER_CHANGED': {
+      const name = d.name?.trim() || 'Someone';
+      const by = d.by?.trim();
+      switch (d.change) {
+        case 'added':
+          return {
+            title: `${name} is now helping with ${possessive(p)} phone`,
+            body: `${p} said yes to ${name} on the phone. ${name} can now change ${possessive(p)} settings and will get these notices too.`,
+            suggestion: `If you don’t know ${name}, give ${p} a call. They can remove a helper from “What my family sees”.`,
+            icon: 'shield',
+          };
+        case 'declined':
+          return { title: `${p} said no to ${name}`, body: `${name} asked to help with ${possessive(p)} phone, and ${p} said no. Nothing changed.`, icon: 'shield' };
+        case 'left':
+          return {
+            title: `${name} stopped helping with ${possessive(p)} phone`,
+            body: `${name} left the family, so they can’t see or change anything on ${possessive(p)} phone now.`,
+            icon: 'shield',
+          };
+        default:
+          return {
+            title: `${name} no longer helps with ${possessive(p)} phone`,
+            body: `${by && by !== name ? by : p} removed ${name} from the family, so ${name} can’t see or change anything on ${possessive(p)} phone now.`,
+            icon: 'shield',
+          };
+      }
+    }
+    case 'CHANGE_REQUEST_ANSWERED': {
+      const by = d.byName?.trim() || 'A helper';
+      const what = d.what?.trim() || 'change a protection setting';
+      return isTrue(d.approved)
+        ? {
+            title: `${p} said yes to a change from ${by}`,
+            body: `${by} asked to ${what}. ${p} said yes on the phone, so the change is in place.`,
+            suggestion: urgent ? `If that wasn’t someone in the family, give ${p} a call.` : undefined,
+            icon: 'shield',
+          }
+        : { title: `${p} said no to a change from ${by}`, body: `${by} asked to ${what}. ${p} said no on the phone, so nothing changed.`, icon: 'shield' };
+    }
+    case 'PHONE_LEFT':
+      return d.by
+        ? { title: `${possessive(p)} phone was taken out of the family`, body: `${d.by} removed ${possessive(p)} phone from the family, so you won’t hear from it anymore.`, icon: 'settings' }
+        : {
+            title: `${p} stopped using Guardian Mode`,
+            body: `${p} took their phone out of the family, so you won’t hear from it anymore. A quick call will tell you if that was the plan.`,
+            icon: 'settings',
+          };
+    default:
+      // A type from a newer server: still say something calm instead of nothing.
+      return { title: `News from ${possessive(p)} phone`, body: `There’s an update about ${possessive(p)} phone.`, icon: 'bell' };
   }
 }
 

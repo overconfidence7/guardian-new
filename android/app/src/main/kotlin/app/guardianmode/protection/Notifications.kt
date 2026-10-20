@@ -54,13 +54,23 @@ object Notifications {
             context, 1, Intent(context, HelpActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val toggle = PendingIntent.getBroadcast(
-            context, 2,
-            Intent(context, NotificationActionReceiver::class.java).setAction(
-                if (paused) NotificationActionReceiver.ACTION_RESUME else NotificationActionReceiver.ACTION_PAUSE_HOUR,
-            ),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        // Turning protection back on is always fine. Pausing goes through the app, so it asks
+        // for the lock code at Guided and Locked just like the button on the transparency screen.
+        val toggle = if (paused) {
+            PendingIntent.getBroadcast(
+                context, 2,
+                Intent(context, NotificationActionReceiver::class.java).setAction(NotificationActionReceiver.ACTION_RESUME),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        } else {
+            PendingIntent.getActivity(
+                context, 2,
+                Intent(context, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DEST_TRANSPARENCY)
+                    .putExtra(MainActivity.EXTRA_PAUSE_HOUR, true),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
         return NotificationCompat.Builder(context, CHANNEL_PROTECTION)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(if (paused) "Guardian Mode is paused" else "Guardian Mode is on")

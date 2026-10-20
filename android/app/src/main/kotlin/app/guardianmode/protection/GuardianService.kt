@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import app.guardianmode.GuardianApp
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
@@ -69,12 +70,15 @@ class GuardianService : LifecycleService() {
         )
         lifecycleScope.launch { watchLoop() }
         lifecycleScope.launch {
-            container.store.state.map { it.isPaused(System.currentTimeMillis()) }.distinctUntilChanged().collect { p ->
-                ServiceCompat.startForeground(
-                    this@GuardianService, Notifications.ID_PROTECTION,
-                    Notifications.protection(this@GuardianService, p),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-                )
+            // Keyed on the end time, not just "paused", so the notification also updates when
+            // the hour simply runs out and nothing in the stored state changes.
+            container.store.state.map { it.pausedUntil }.distinctUntilChanged().collectLatest { until ->
+                val now = System.currentTimeMillis()
+                showProtection(paused = until > now)
+                if (until > now) {
+                    delay(until - now)
+                    showProtection(paused = false)
+                }
             }
         }
         lifecycleScope.launch {
@@ -84,6 +88,14 @@ class GuardianService : LifecycleService() {
                 delay(STATUS_INTERVAL)
             }
         }
+    }
+
+    private fun showProtection(paused: Boolean) {
+        ServiceCompat.startForeground(
+            this, Notifications.ID_PROTECTION,
+            Notifications.protection(this, paused),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { describeEvent, possessive, type EventLike } from './eventText';
-import { EVENT_TYPES, type EventType } from './model';
+import { EVENT_TYPES, SERVER_EVENT_TYPES, type AnyEventType, type EventType } from './model';
 
 const ev = (type: EventType, data: Record<string, string> = {}, severity: EventLike['severity'] = 'NOTICE'): EventLike => ({ type, data, severity });
 
@@ -68,5 +68,32 @@ describe('describeEvent', () => {
   it('possessive', () => {
     expect(possessive('Mom')).toBe('Mom’s');
     expect(possessive('James')).toBe('James’');
+  });
+
+  it('family notices match the push wording (functions/src/copy.ts)', () => {
+    const notice = (type: AnyEventType, data: Record<string, string>, severity: EventLike['severity'] = 'NOTICE') =>
+      describeEvent({ type, data, severity }, 'Mom');
+    expect(notice('HELPER_CHANGED', { change: 'added', name: 'David' }, 'URGENT').body).toBe(
+      'Mom said yes to David on the phone. David can now change Mom’s settings and will get these notices too.',
+    );
+    expect(notice('HELPER_CHANGED', { change: 'removed', name: 'David', by: 'Sarah' }).body).toBe(
+      'Sarah removed David from the family, so David can’t see or change anything on Mom’s phone now.',
+    );
+    expect(notice('CHANGE_REQUEST_ANSWERED', { byName: 'David', approved: 'false', what: 'turn off long-call notices' }).body).toBe(
+      'David asked to turn off long-call notices. Mom said no on the phone, so nothing changed.',
+    );
+    for (const type of SERVER_EVENT_TYPES) {
+      for (const data of [{} as Record<string, string>, { change: 'left', name: 'David', by: 'Sarah', byName: 'David', approved: 'true', what: 'trust a remote-control app' }]) {
+        const t = notice(type, data, 'URGENT');
+        const all = `${t.title} ${t.body} ${t.suggestion ?? ''}`;
+        expect(all).toContain('Mom');
+        expect(all).not.toMatch(/\b(scam|fraud|danger|alert|monitor\w*|track\w*|undefined|null)\b/i);
+        expect(all).not.toMatch(/ [-–—] |—/);
+      }
+    }
+  });
+
+  it('a type from a newer server still reads calmly', () => {
+    expect(describeEvent({ type: 'SOMETHING_NEW' as AnyEventType, data: {}, severity: 'NOTICE' }, 'Mom').title).toBe('News from Mom’s phone');
   });
 });

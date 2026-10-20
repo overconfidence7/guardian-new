@@ -69,6 +69,8 @@ interface HomeActions {
     fun onAllApps()
     fun onReminders()
     fun onHelperDecision(uid: String, approve: Boolean)
+    /** The parent's answer to a helper's risky change (docs/SECURITY.md §3). */
+    fun onRequestDecision(id: String, approve: Boolean) {}
 }
 
 @Composable
@@ -89,6 +91,11 @@ fun HomeScreen(ui: HomeUi, now: ZonedDateTime, actions: HomeActions, modifier: M
         ui.pendingHelper?.let { helper ->
             item(span = { GridItemSpan(maxLineSpan) }) {
                 HelperRequest(helper.name, helper.photoUrl, onAllow = { actions.onHelperDecision(helper.uid, true) }, onDecline = { actions.onHelperDecision(helper.uid, false) })
+            }
+        }
+        ui.pendingRequest?.let { request ->
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                ChangeRequestCard(request, onAllow = { actions.onRequestDecision(request.id, true) }, onDecline = { actions.onRequestDecision(request.id, false) })
             }
         }
         if (ui.showPhotoCard) {
@@ -346,6 +353,38 @@ private fun HelperRequest(name: String, photoUrl: String?, onAllow: () -> Unit, 
         )
         Spacer(Modifier.height(16.dp))
         app.guardianmode.ui.components.BigButton("Yes, $name can help", onAllow)
+        Spacer(Modifier.height(10.dp))
+        app.guardianmode.ui.components.BigButton("No", onDecline, primary = false, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+    }
+}
+
+/** "Sarah wants to turn off the pause before sending money. Allow?" Same look as a new helper's request. */
+@Composable
+private fun ChangeRequestCard(request: RequestUi, onAllow: () -> Unit, onDecline: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Guardian.dimens.tileCorner))
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(request.name, request.photoUrl, 56.dp)
+            Spacer(Modifier.width(14.dp))
+            Text(
+                "${request.name} wants to ${request.what}.",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Only say yes if you asked ${request.name} to do this. Your family will hear what you choose.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+        Spacer(Modifier.height(16.dp))
+        app.guardianmode.ui.components.BigButton("Yes, go ahead", onAllow)
         Spacer(Modifier.height(10.dp))
         app.guardianmode.ui.components.BigButton("No", onDecline, primary = false, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
     }

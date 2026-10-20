@@ -40,6 +40,7 @@ class GuardianBrain(
         config = { store.current.config },
         catalog = catalog,
         newId = { UUID.randomUUID().toString() },
+        restoredCallEndedAt = store.current.lastUnknownCallEndedAt,
     )
 
     /** True while a call is in progress; the service ticks faster and watches apps more closely. */
@@ -67,6 +68,9 @@ class GuardianBrain(
             cards.show(CardRequest(kind = CardKind.LOCKED, packageName = packageName, appLabel = label))
             return
         }
+        // While everything is paused the engine doesn't see apps at all, so a card that was
+        // never shown doesn't count as shown once the pause ends.
+        if (store.current.isPaused(clock())) return
         evaluate { now -> engine.onForeground(packageName, label, now) }
     }
 
@@ -90,6 +94,8 @@ class GuardianBrain(
                 Log.e(TAG, "Rule evaluation failed", it)
                 emptyList()
             }
+            val ended = engine.lastUnknownCallEndedAt
+            if (ended != store.current.lastUnknownCallEndedAt) store.update { it.copy(lastUnknownCallEndedAt = ended) }
             // "Pause everything" means no cards and nothing shared, not just quieter cards.
             if (actions.isEmpty() || store.current.isPaused(now)) return@launch
             for (action in actions) {

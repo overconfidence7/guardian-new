@@ -71,8 +71,27 @@ service cloud.firestore {
         || (keys[i].size() <= 40 && values[i] is string && values[i].size() <= 200);
     }
 
-    function validEventData(data) {
+    // The only data keys each type may carry (docs/API.md "Event data keys"), so a number,
+    // a message or screen text can't ride along in an event.
+    function eventDataKeys(t) {
+      return {
+        'LONG_UNKNOWN_CALL': ['minutes', 'ongoing'],
+        'PAUSE_SHOWN': ['app', 'category', 'duringCall', 'minutesSinceCall'],
+        'PAUSE_CALLED_FAMILY': ['app', 'category'],
+        'PAUSE_CONTINUED': ['app', 'category'],
+        'REMOTE_ACCESS_INSTALLED': ['app', 'category', 'afterUnknownCall'],
+        'REMOTE_ACCESS_OPENED': ['app', 'category', 'afterUnknownCall'],
+        'CONTROL_APP_INSTALLED': ['app', 'category', 'afterUnknownCall'],
+        'HELP_REQUESTED': ['note', 'path'],
+        'REMINDER_MISSED': ['title', 'time'],
+        'PROTECTION_CHANGED_BY_PARENT': ['feature', 'enabled'],
+        'PERMISSION_MISSING': ['permission']
+      }[t];
+    }
+
+    function validEventData(type, data) {
       return data is map
+        && data.keys().hasOnly(eventDataKeys(type))
         && data.size() <= 10
         && validDataEntry(data.keys(), data.values(), 0)
         && validDataEntry(data.keys(), data.values(), 1)
@@ -95,7 +114,7 @@ service cloud.firestore {
         && e.at is int
         && e.createdAt == request.time
         && e.source == 'device'
-        && (!('data' in e) || validEventData(e.data));
+        && (!('data' in e) || validEventData(e.type, e.data));
     }
 
     // ---- Config attribution -----------------------------------------------------------
@@ -107,6 +126,86 @@ service cloud.firestore {
         && c.updatedBy.kind == kind
         && isShortString(c.updatedBy.name, 80)
         && c.updatedAt == request.time;
+    }
+
+    // ---- Changes only the parent can make (docs/SECURITY.md §3) ----------------------
+    // A helper's config write may not change these directly; the dashboard asks with a
+    // requests/ doc instead and the phone applies it once the parent says yes. Making
+    // things safer (turning protection on, untrusting an app, relocking) is always fine.
+    // Missing fields read as the phone's defaults (core/Model.kt).
+
+    function phonePaired(familyId, deviceId) {
+      return get(devicePath(familyId, deviceId)).data.get('deviceUid', null) != null;
+    }
+
+    function staysOn(before, after, path) {
+      return before.get(path, true) != true || after.get(path, true) == true;
+    }
+
+    // Position i of the family list keeps its id, number and primary-helper flag.
+    function familyEntryKept(before, after, i) {
+      return i >= before.size()
+        || (after[i].get('id', '') == before[i].get('id', '')
+            && after[i].get('phone', '') == before[i].get('phone', '')
+            && after[i].get('isPrimaryHelper', false) == before[i].get('isPrimaryHelper', false));
+    }
+
+    // Rules have no loops: families have at most 12 entries here, checked by position.
+    // Adding, removing or reordering entries changes who the phone calls, so it asks too.
+    function familyNumbersKept(before, after) {
+      return before.size() == after.size()
+        && before.size() <= 12
+        && familyEntryKept(before, after, 0)
+        && familyEntryKept(before, after, 1)
+        && familyEntryKept(before, after, 2)
+        && familyEntryKept(before, after, 3)
+        && familyEntryKept(before, after, 4)
+        && familyEntryKept(before, after, 5)
+        && familyEntryKept(before, after, 6)
+        && familyEntryKept(before, after, 7)
+        && familyEntryKept(before, after, 8)
+        && familyEntryKept(before, after, 9)
+        && familyEntryKept(before, after, 10)
+        && familyEntryKept(before, after, 11);
+    }
+
+    function keepsParentOnlySettings(before, after) {
+      let trusted = ['protection', 'remoteAccessAlarm', 'trustedPackages'];
+      let unlock = ['lock', 'remoteUnlockUntil'];
+      return familyNumbersKept(before.get('family', []), after.get('family', []))
+        && after.get(trusted, []).toSet().difference(before.get(trusted, []).toSet()).size() == 0
+        && staysOn(before, after, ['protection', 'pauseTripwires', 'enabled'])
+        && staysOn(before, after, ['protection', 'remoteAccessAlarm', 'enabled'])
+        && staysOn(before, after, ['protection', 'longCallAlert', 'enabled'])
+        && after.get(unlock, 0) <= before.get(unlock, 0);
+    }
+
+    function helperConfigWrite(familyId, deviceId) {
+      return isHelper(familyId)
+        && attributedTo('helper')
+        && (!phonePaired(familyId, deviceId)
+            || (resource != null && keepsParentOnlySettings(resource.data, request.resource.data)));
+    }
+
+    // A helper's request for one of the changes above (docs/API.md "requests").
+    function validChangeRequest() {
+      let r = request.resource.data;
+      let c = r.changes;
+      return r.keys().hasOnly(['byUid', 'byName', 'changes', 'status', 'createdAt'])
+        && r.keys().hasAll(['byUid', 'byName', 'changes', 'status', 'createdAt'])
+        && r.byUid == request.auth.uid
+        && isShortString(r.byName, 80) && r.byName.size() > 0
+        && r.status == 'pending'
+        && r.createdAt == request.time
+        && c is map && c.size() > 0
+        && c.keys().hasOnly(['family', 'trustedPackages', 'pauseTripwiresEnabled', 'remoteAccessAlarmEnabled', 'longCallAlertEnabled', 'remoteUnlockUntil'])
+        && (!('family' in c) || (c.family is list && c.family.size() <= 12))
+        && (!('trustedPackages' in c) || (c.trustedPackages is list && c.trustedPackages.size() <= 50))
+        && (!('pauseTripwiresEnabled' in c) || c.pauseTripwiresEnabled is bool)
+        && (!('remoteAccessAlarmEnabled' in c) || c.remoteAccessAlarmEnabled is bool)
+        && (!('longCallAlertEnabled' in c) || c.longCallAlertEnabled is bool)
+        && (!('remoteUnlockUntil' in c)
+            || (c.remoteUnlockUntil is int && c.remoteUnlockUntil <= request.time.toMillis() + 86400000));
     }
 
     // ---- Device fields the phone may report -------------------------------------------
@@ -173,9 +272,26 @@ service cloud.firestore {
         match /config/{docId} {
           allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
           // The parent owns the phone and may switch features off, so the phone writes too.
+          // Helpers change everything else at once; see keepsParentOnlySettings for what waits.
           allow create, update: if docId == 'current'
-                                && ((isHelper(familyId) && attributedTo('helper'))
+                                && (helperConfigWrite(familyId, deviceId)
                                     || (isDevice(familyId, deviceId) && attributedTo('device')));
+        }
+
+        // Risky changes waiting for the parent (docs/SECURITY.md §3). The phone answers by
+        // setting status, then writes the config itself; onRequestAnswered tells helpers.
+        match /requests/{requestId} {
+          allow read: if isHelper(familyId) || isDevice(familyId, deviceId);
+          allow create: if isHelper(familyId) && validChangeRequest();
+          allow update: if isDevice(familyId, deviceId)
+                        && resource.data.status == 'pending'
+                        && changedKeys().hasOnly(['status', 'decidedAt'])
+                        && request.resource.data.status in ['approved', 'declined']
+                        && request.resource.data.decidedAt == request.time;
+          // The helper who asked may take it back while it's still waiting.
+          allow delete: if isHelper(familyId)
+                        && resource.data.byUid == request.auth.uid
+                        && resource.data.status == 'pending';
         }
 
         match /events/{eventId} {

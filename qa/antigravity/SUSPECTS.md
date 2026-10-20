@@ -8,7 +8,8 @@ From the partial run on 2026-10-19 (`2cd6b8e`, `gm-api36`). Fixes landed in PR #
 
 | ID | Verdict | Note |
 |---|---|---|
-| S-06 | Confirmed | "Alerts your family received" shown in solo mode; heading is now "What your family was told". The solo-mode honesty question is still open. |
+| S-06 | Confirmed, fixed (PR #8) | In solo mode the section reads "What Guardian did on this phone", events are not queued for a family that joins later, and linking a family starts the "told" list fresh. |
+| S-07 | Confirmed, fixed (PR #8) | Solo Help with no helper set now explains and offers "Call someone", which opens the dialer. |
 | S-08 | Confirmed, fixed | Five parent-facing hits (BUG-005). |
 | S-09 | Ruled out | At Locked the Pixel launcher got a code screen, but it showed the package name; now "This app is locked". |
 | S-11 | Partly | Settings stayed uncovered in `GM-LOCK-041`; the run didn't record which permission was missing. Re-test. |
