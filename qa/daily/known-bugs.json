@@ -106,5 +106,26 @@
     "tests": [
       "gm_lock_041_lockedWithoutOverlayOrHomeRoleStillCovers"
     ]
+  },
+  "S-06": {
+    "title": "Solo mode lists events under \"What your family was told\" (LocalStore.kt:62 records with no family; TransparencyScreen.kt:127 ignores paired)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_tran_007_soloModeDoesNotClaimTheFamilyReceivedAlerts"
+    ]
+  },
+  "S-07": {
+    "title": "Solo Help screen has only Back (HelpActivity HelpContent)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_help_001_soloHelpIsNotADeadEnd"
+    ]
+  },
+  "A11Y-64DP": {
+    "title": "Several buttons, switches and fields are 48-57 dp; SPEC bar 8 asks for 64 dp",
+    "owner": "unassigned",
+    "tests": [
+      "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
+    ]
   }
 }
