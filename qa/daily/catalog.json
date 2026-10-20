@@ -1,0 +1,15 @@
+{
+  "_readme": "Cases the cloud suite can't run for real, and what covers them instead. Everything else in qa/antigravity/cases is either automated (a test carries its id) or not automated yet, and the daily report lists the P0 ones still missing. Remove an entry when a cloud test covers the case for real.",
+  "needsAPerson": {
+    "GM-PERF-010": "Battery drain over 8 hours needs real hardware; emulator battery stats aren't meaningful. In the cloud: GM-PERF-011 (polling slows down when idle) and GM-SVC-009 (Doze) show Guardian isn't keeping the phone awake.",
+    "GM-PAUSE-010": "The emulator can't place a call with caller ID hidden. In the cloud: core tests feed a null/blank number through screening and the tripwires and check it counts as unknown.",
+    "GM-SCRN-013": "Hidden, short-code and international caller IDs need a real carrier. In the cloud: core screening tests with blank, short and +44 numbers.",
+    "GM-SCRN-014": "Caller-ID verification (STIR/SHAKEN) can't be simulated on an emulator. In the cloud: core screening tests with verificationFailed = true.",
+    "GM-HOME-003": "Whether someone new to the app can call Sarah in under 5 seconds is a usability check. In the cloud: the device suite times tile tap to an outgoing call and checks the tile's spoken label.",
+    "GM-A11Y-002": "A full TalkBack walk-through is judged by a person. In the cloud: JVM tests check every parent control has a label, role and 48 dp target.",
+    "GM-A11Y-008": "Google's Accessibility Scanner is a Play Store app. In the cloud: the same checks as GM-A11Y-002.",
+    "GM-RACC-016": "Real AnyDesk needs a Google account on a Play Store image. In the cloud: the stand-in installs under AnyDesk's real package name.",
+    "GM-CONS-012": "\"Restricted settings\" for sideloaded apps only shows on Play Store images and real phones. Could move to the cloud with a google_apis_playstore emulator job.",
+    "GM-SCAM-010": "\"Your own scenario\" is exploratory by design. The daily review adds a new scripted scenario as a case whenever it finds a gap."
+  }
+}

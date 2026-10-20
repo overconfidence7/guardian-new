@@ -42,7 +42,7 @@ class ModelTest {
         assertEquals(c, GuardianJson.decodeConfig(GuardianJson.encodeConfig(c)))
     }
 
-    @Test fun `transparency lists every feature and never-collected items`() {
+    @Test fun `gm_tran_003 gm_tran_005 transparency lists every feature and never-collected items`() {
         val items = Transparency.items(DeviceConfig())
         assertEquals(7, items.size)
         assertTrue(Transparency.NEVER_COLLECTED.any { it.contains("messages") })

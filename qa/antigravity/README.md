@@ -2,6 +2,8 @@
 
 A hands-on test pass for the Guardian Mode Android app, written for an agent (Google Antigravity) driving Android emulators, a real test phone over USB, and the local Firebase emulators on Nate's Windows PC. It complements the automated tests in CI (`docs/TESTING.md`): CI proves the rules; this suite proves the app works for a real person on a real phone, and tries hard to break it.
 
+These cases are also the catalog for the daily cloud suite (`qa/daily/README.md`), which automates them and reports coverage every morning; a hands-on pass is now optional.
+
 Start with [RUNBOOK.md](RUNBOOK.md). The kickoff prompt to paste into Antigravity is in [KICKOFF_PROMPT.md](KICKOFF_PROMPT.md).
 
 ## What's here

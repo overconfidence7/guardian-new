@@ -6,13 +6,14 @@
  *   cd ../firebase && firebase emulators:exec --project demo-guardian "cd ../web && npm run e2e"
  */
 import { expect, test } from '@playwright/test';
-import { admin, anonymousPhone, callFunction, clearEmulators, emulatorsUp, injectEvent } from './emulator';
+import { admin, anonymousPhone, callFunction, clearEmulators, createHelperAccount, emulatorsUp, injectEvent } from './emulator';
 
 test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   test.skip(!(await emulatorsUp()), 'Firebase emulators are not running');
   await clearEmulators();
+  await createHelperAccount('sarah@example.com', 'password123', 'Sarah');
 });
 
 test('helper sets up a family, pairs the phone, edits settings and sees alerts', async ({ page }) => {

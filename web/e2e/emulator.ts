@@ -62,3 +62,17 @@ export async function injectEvent(familyId: string, deviceId: string, event: { t
     .collection(`families/${familyId}/devices/${deviceId}/events`)
     .add({ ...event, at: Date.now(), createdAt: FieldValue.serverTimestamp(), source: 'device' });
 }
+
+/**
+ * Create an email/password helper account with a display name before the test signs in.
+ * Signing up through the dashboard's dev sign-in sets the name after the account exists,
+ * and the first screen can render before that lands.
+ */
+export async function createHelperAccount(email: string, password: string, displayName: string): Promise<void> {
+  const res = await fetch(`${AUTH_URL}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-api-key`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName, returnSecureToken: true }),
+  });
+  if (!res.ok) throw new Error(`helper sign-up failed: ${res.status} ${await res.text()}`);
+}

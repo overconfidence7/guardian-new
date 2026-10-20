@@ -76,7 +76,14 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            all { it.systemProperty("robolectric.pixelCopyRenderMode", "hardware") }
+            all {
+                it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+                // @Category(KnownBug::class) tests describe behavior the app doesn't have yet.
+                // Pull-request CI leaves them out; the daily run passes -PincludeKnownBugs=true.
+                if (!providers.gradleProperty("includeKnownBugs").isPresent) {
+                    it.useJUnit { excludeCategories("app.guardianmode.KnownBug") }
+                }
+            }
         }
         animationsDisabled = true
     }

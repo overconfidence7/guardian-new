@@ -1,0 +1,17 @@
+{
+  "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
+  "DASH-SAVE": {
+    "title": "Dashboard settings saves are rejected (serverTimestamp copied by stripUndefined)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "helper sets up a family, pairs the phone, edits settings and sees alerts"
+    ]
+  },
+  "LONGCALL-URGENT": {
+    "title": "Long-call notice isn't urgent after a money app when pause cards are off (TripwireEngine.kt:117 returns before noting the app)",
+    "owner": "unassigned",
+    "tests": [
+      "gm_call_003_urgentAfterBankAppEvenWithPauseCardsOff"
+    ]
+  }
+}

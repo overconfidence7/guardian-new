@@ -28,7 +28,7 @@ class CallTrackerTest {
         assertFalse(started.session.unknown)
     }
 
-    @Test fun `unscreened call is a hidden number when the screener sees contacts`() {
+    @Test fun `gm_pause_010 unscreened call is a hidden number when the screener sees contacts`() {
         val t = CallTracker(screenerSeesContacts = { true })
         assertTrue(t.onCallState(PhoneCallState.RINGING, 0).single().session.unknown)
     }
@@ -47,7 +47,7 @@ class CallTrackerTest {
         assertFalse(started.session.unknown)
     }
 
-    @Test fun `missed unknown call ends unanswered`() {
+    @Test fun `gm_pause_005 missed unknown call ends unanswered`() {
         val t = CallTracker()
         t.onScreened("5559998888", unknown = true, at = 0)
         t.onCallState(PhoneCallState.RINGING, 100)
@@ -55,7 +55,7 @@ class CallTrackerTest {
         assertFalse(ended.session.answered)
     }
 
-    @Test fun `outgoing call is known and answered immediately`() {
+    @Test fun `gm_pause_011 gm_scrn_010 outgoing call is known and answered immediately`() {
         val t = CallTracker()
         val updates = t.onCallState(PhoneCallState.OFFHOOK, 0)
         assertEquals(2, updates.size)
@@ -63,7 +63,7 @@ class CallTrackerTest {
         assertFalse(updates[0].session.unknown)
     }
 
-    @Test fun `call waiting does not replace the active call`() {
+    @Test fun `gm_pause_012 call waiting does not replace the active call`() {
         val t = CallTracker()
         t.onScreened("5559998888", unknown = true, at = 0)
         t.onCallState(PhoneCallState.RINGING, 100)
