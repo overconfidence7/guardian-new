@@ -10,6 +10,7 @@ import { useData, useUser } from '../../data/DataProvider';
 import { useConfigDoc } from '../../data/hooks';
 import { changedPaths, deepEqual } from '../../lib/merge';
 import type { DeviceConfig } from '../../lib/model';
+import { describeRequest } from '../../lib/riskyChanges';
 import type { ConfigDoc } from '../../lib/types';
 import { useToast } from '../../components/Toast';
 import { Button } from '../../components/Button';
@@ -67,9 +68,14 @@ export function ConfigEditorProvider({ familyId, deviceId, parentName, children 
     if (!edits || !dirty) return true;
     setSaving(true);
     try {
-      const written = await api.saveConfig(familyId, deviceId, edits.base, edits.draft, { uid: user.uid, name: user.displayName });
+      const { config: written, held } = await api.saveConfig(familyId, deviceId, edits.base, edits.draft, { uid: user.uid, name: user.displayName });
       setEdits({ base: written, draft: written });
-      toast(`Saved. ${parentName}’s phone will update in a few seconds.`);
+      if (held) {
+        // docs/SECURITY.md §3: these wait for the parent's yes on the phone.
+        toast(`Saved. ${parentName} will be asked on the phone about ${describeRequest(held)}, and everyone hears the answer.`);
+      } else {
+        toast(`Saved. ${parentName}’s phone will update in a few seconds.`);
+      }
       return true;
     } catch (e) {
       toast(friendlyError(e), 'error');

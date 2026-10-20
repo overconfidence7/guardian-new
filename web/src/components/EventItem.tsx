@@ -8,7 +8,7 @@ import { Icon } from './Icon';
 export function EventItem({ event, parentName, now, compact = false, familyId, deviceId }: { event: EventDoc; parentName: string; now: number; compact?: boolean; familyId?: string; deviceId?: string }) {
   const text = describeEvent(event, parentName);
   const sev = event.severity.toLowerCase();
-  const shotPath = event.type === 'HELP_REQUESTED' ? (event.data.storagePath ?? (event.data.screenshot && familyId && deviceId ? `families/${familyId}/devices/${deviceId}/help/${event.data.screenshot}.jpg` : undefined)) : undefined;
+  const shotPath = event.type === 'HELP_REQUESTED' ? (event.data.path ?? event.data.storagePath ?? (event.data.screenshot && familyId && deviceId ? `families/${familyId}/devices/${deviceId}/help/${event.data.screenshot}.jpg` : undefined)) : undefined;
   const shot = useFileUrl(compact ? undefined : shotPath);
   return (
     <article className={`event event-${sev} ${compact ? 'event-compact' : ''}`} aria-label={`${SEVERITY_LABEL[event.severity]}: ${text.title}`}>
