@@ -63,9 +63,11 @@ object HomeModel {
                 else -> TileUi(tile.id, tile.kind, tile.label.ifBlank { defaultLabel(tile.kind) }, tile.target)
             }
         }
-        val upcoming = ReminderSchedule.upcomingToday(config.reminders, now)
+        // Reminders follow the zone the alarms use; the time shown is the phone's own clock.
+        val reminderNow = now.withZoneSameInstant(ReminderSchedule.zoneOf(config.checkIn.timezone))
+        val upcoming = ReminderSchedule.upcomingToday(config.reminders, reminderNow)
             .firstOrNull { it.at.isBefore(now.plusHours(2)) }
-            ?.let { it.reminder.title to it.at.format(reminderTime) }
+            ?.let { it.reminder.title to it.at.withZoneSameInstant(now.zone).format(reminderTime) }
         val photo = (state.photos + state.localPhotos).maxByOrNull { it.createdAt }
         return HomeUi(
             time = now.format(timeFormat),

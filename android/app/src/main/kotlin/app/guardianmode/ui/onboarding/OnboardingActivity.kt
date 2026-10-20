@@ -2,6 +2,7 @@ package app.guardianmode.ui.onboarding
 
 import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -14,14 +15,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import app.guardianmode.GuardianApp
 import app.guardianmode.cloud.CloudSync
 import app.guardianmode.cloud.InvitePreview
+import app.guardianmode.core.DeviceConfig
 import app.guardianmode.core.LockLevel
 import app.guardianmode.protection.Capability
 import app.guardianmode.protection.Features
 import app.guardianmode.protection.GuardianService
+import app.guardianmode.protection.withFeature
 import app.guardianmode.ui.MainActivity
 import app.guardianmode.ui.theme.GuardianTheme
 import com.google.firebase.functions.FirebaseFunctionsException
@@ -52,12 +56,21 @@ class OnboardingActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     private val settingsLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { refresh++ }
 
+    /**
+     * Where the parent got to. Kept on disk, not just in memory: picking Guardian as the
+     * home app makes Android rebuild the launcher task, and a fresh activity would otherwise
+     * throw them back to the first screen.
+     */
+    private val progress by lazy { getSharedPreferences(PROGRESS_PREFS, Context.MODE_PRIVATE) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        restoreProgress()
         setContent {
             GuardianTheme {
-                BackHandler(enabled = stage != Stage.ROLE) { back() }
+                // Back on the first screen leaves setup altogether, never onto an unfinished home screen.
+                BackHandler { if (stage == Stage.ROLE) finishAffinity() else back() }
                 OnboardingFlow(
                     stage = stage,
                     code = code,
@@ -80,6 +93,30 @@ class OnboardingActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refresh++
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveProgress()
+    }
+
+    private fun saveProgress() {
+        progress.edit {
+            putString(KEY_STAGE, stage.name)
+            putInt(KEY_PAGE, pageIndex)
+            putString(KEY_LOCK_LEVEL, lockLevel.name)
+            putString(KEY_CODE, code)
+        }
+    }
+
+    private fun restoreProgress() {
+        val saved = progress.getString(KEY_STAGE, null)?.let { name -> Stage.entries.firstOrNull { it.name == name } } ?: return
+        pageIndex = progress.getInt(KEY_PAGE, 0).coerceIn(0, ConsentPages.all.lastIndex)
+        lockLevel = progress.getString(KEY_LOCK_LEVEL, null)?.let { name -> LockLevel.entries.firstOrNull { it.name == name } } ?: lockLevel
+        code = progress.getString(KEY_CODE, "").orEmpty()
+        // The family preview isn't kept, so a parent who was confirming starts again from the code they typed.
+        stage = if (saved == Stage.SCAN || saved == Stage.CONFIRM) Stage.CODE else saved
+        accepted = container.store.current.consent[ConsentPages.all[pageIndex].key] == true
     }
 
     private fun back() {
@@ -175,7 +212,7 @@ class OnboardingActivity : ComponentActivity() {
         override fun turnOn() {
             val page = ConsentPages.all[pageIndex]
             accepted = true
-            lifecycleScope.launch { container.store.update { it.copy(consent = it.consent + (page.key to true)) } }
+            lifecycleScope.launch { container.store.update { it.copy(consent = it.consent + (page.key to true), config = it.config.withConsent(page.key, true)) } }
             requestNextMissing()
         }
 
@@ -187,7 +224,8 @@ class OnboardingActivity : ComponentActivity() {
 
         override fun notNow() {
             val page = ConsentPages.all[pageIndex]
-            lifecycleScope.launch { container.store.update { it.copy(consent = it.consent + (page.key to false)) } }
+            // "Not now" really means off: the features behind this page stop, and the transparency screen says so.
+            lifecycleScope.launch { container.store.update { it.copy(consent = it.consent + (page.key to false), config = it.config.withConsent(page.key, false)) } }
             nextPage()
         }
 
@@ -210,6 +248,7 @@ class OnboardingActivity : ComponentActivity() {
                 container.protection.reportStatus()
                 container.reminders.reschedule()
                 GuardianService.start(this@OnboardingActivity)
+                progress.edit { clear() }
                 startActivity(Intent(this@OnboardingActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
                 finish()
             }
@@ -249,4 +288,25 @@ class OnboardingActivity : ComponentActivity() {
             else -> "That didn't work. Try again in a minute."
         }
     }
+
+    companion object {
+        private const val PROGRESS_PREFS = "onboarding_progress"
+        private const val KEY_STAGE = "stage"
+        private const val KEY_PAGE = "page"
+        private const val KEY_LOCK_LEVEL = "lockLevel"
+        private const val KEY_CODE = "code"
+
+        /** Forgets a half-finished setup, for when the parent stops using Guardian and starts over. */
+        fun clearProgress(context: Context) {
+            context.getSharedPreferences(PROGRESS_PREFS, Context.MODE_PRIVATE).edit { clear() }
+        }
+    }
+}
+
+/** The config switches behind each consent page, so a "Not now" turns them off and a "Turn on" back on. */
+internal fun DeviceConfig.withConsent(key: String, enabled: Boolean) = when (key) {
+    Features.PAUSE -> withFeature("pause", enabled).withFeature("remoteAccess", enabled)
+    Features.CALLS -> withFeature("screening", enabled).withFeature("longCall", enabled)
+    Features.CHECK_IN -> withFeature("checkIn", enabled)
+    else -> this
 }

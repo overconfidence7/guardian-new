@@ -98,9 +98,10 @@ class GuardianService : LifecycleService() {
             val brain = container.brain
             val screenOn = power.isInteractive
             if (screenOn && container.capabilities.has(Capability.USAGE_ACCESS)) {
-                foreground.poll()?.let { pkg ->
+                foreground.poll()?.let { front ->
+                    val pkg = front.packageName
                     val label = runCatching { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
-                    brain.onForeground(pkg, label)
+                    brain.onForeground(pkg, label, front.className)
                 }
             }
             if (brain.callActive) brain.onTick()

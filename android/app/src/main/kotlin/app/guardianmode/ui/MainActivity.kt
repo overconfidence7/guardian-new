@@ -23,7 +23,6 @@ import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.HelperInfo
-import app.guardianmode.protection.Capabilities
 import app.guardianmode.protection.GuardianService
 import app.guardianmode.ui.help.HelpActivity
 import app.guardianmode.ui.home.AllAppsScreen
@@ -60,9 +59,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (!container.store.current.onboardingDone) {
-            startActivity(Intent(this, OnboardingActivity::class.java))
-        }
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
         setContent { Content() }
     }
@@ -76,10 +72,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         val state = container.store.current
-        if (!state.onboardingDone) return
+        if (!state.onboardingDone) {
+            // Checked on every resume, not just at creation: this activity is the launcher and outlives setup,
+            // and the home screen must never show as if setup had finished.
+            startActivity(Intent(this, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            return
+        }
         GuardianService.start(this)
-        val needed = Capabilities.BY_FEATURE.filterKeys { state.consent[it] == true }.values.flatten().distinct()
-        needsAttention = container.capabilities.missing(needed).isNotEmpty()
+        needsAttention = container.protection.needsAttention()
         lifecycleScope.launch {
             container.protection.onUserActive()
             container.cloud.flushOutbox()
@@ -133,7 +133,10 @@ class MainActivity : ComponentActivity() {
                     onBack = { destination = DEST_TRANSPARENCY },
                 )
                 DEST_REMINDERS -> RemindersScreen(
-                    today = ReminderSchedule.upcomingToday(state.config.reminders, now.toLocalDate().atStartOfDay(now.zone)),
+                    // Same zone the alarms are set in, so each reminder's "Done" key matches the one recorded.
+                    today = ReminderSchedule.zoneOf(state.config.checkIn.timezone).let { zone ->
+                        ReminderSchedule.upcomingToday(state.config.reminders, now.withZoneSameInstant(zone).toLocalDate().atStartOfDay(zone))
+                    },
                     done = state.remindersDone.keys,
                 ) { destination = DEST_HOME }
                 DEST_TRANSPARENCY -> TransparencyScreen(
@@ -231,6 +234,7 @@ class MainActivity : ComponentActivity() {
                     it.copy(onboardingDone = false, consent = emptyMap(), lockCodeHash = "", lockCodeSalt = "", unlockedUntil = 0, lockFailures = 0, lockRetryAt = 0)
                 }
                 GuardianService.stop(this@MainActivity)
+                OnboardingActivity.clearProgress(this@MainActivity)
                 Launch.homeSettings(this@MainActivity)
             }
         }

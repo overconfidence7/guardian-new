@@ -27,10 +27,13 @@ import app.guardianmode.ui.transparency.TransparencyActions
 import app.guardianmode.ui.transparency.TransparencyScreen
 import app.guardianmode.ui.transparency.TransparencyUi
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.util.TimeZone
 
 /**
  * Visual baselines for every screen the parent sees, at the sizes and settings that
@@ -40,6 +43,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w360dp-h780dp-xhdpi")
 class ScreenshotTest {
+
+    // Cards show times on the phone's clock. The baselines were recorded in UTC on CI, so
+    // pin it here or every machine in another time zone fails on the reminder card.
+    private val hostZone = TimeZone.getDefault()
+    @Before fun pinZone() = TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    @After fun restoreZone() = TimeZone.setDefault(hostZone)
 
     private fun shot(name: String, display: DisplaySettings = DisplaySettings(), content: @Composable () -> Unit) {
         captureRoboImage("src/test/screenshots/$name.png") {

@@ -28,9 +28,15 @@ object LockPolicy {
         "com.google.android.dialer",
         "com.samsung.android.dialer",
         "com.samsung.android.incallui",
-        "com.android.permissioncontroller",
-        "com.google.android.permissioncontroller",
     )
+
+    /**
+     * Android's permission app hosts both the "Allow this app to...?" prompts, which must
+     * always show, and the permission manager, where anyone could switch Guardian's Phone
+     * or Contacts access off. Only the prompts get through at Locked.
+     */
+    private val PERMISSION_CONTROLLERS = setOf("com.android.permissioncontroller", "com.google.android.permissioncontroller")
+    private val PERMISSION_PROMPTS = listOf("GrantPermissionsActivity", "RequestRoleActivity")
 
     fun needsCode(action: LockedAction, level: LockLevel): Boolean = when (level) {
         LockLevel.SIMPLE -> action == LockedAction.STOP_USING || action == LockedAction.LOCK_SETTINGS
@@ -45,9 +51,13 @@ object LockPolicy {
      * [allowed] is every package the family put on the phone (tiles, allowed apps,
      * the phone's own dialer, messages and camera) plus Guardian itself.
      */
-    fun blocks(packageName: String, settings: LockSettings, allowed: Set<String>, unlocked: Boolean): Boolean =
+    fun blocks(packageName: String, settings: LockSettings, allowed: Set<String>, unlocked: Boolean, className: String = ""): Boolean =
         settings.level == LockLevel.LOCKED && !unlocked &&
-            packageName !in allowed && packageName !in ALWAYS_ALLOWED
+            packageName !in allowed && packageName !in ALWAYS_ALLOWED && !isPermissionPrompt(packageName, className)
+
+    private fun isPermissionPrompt(packageName: String, className: String): Boolean =
+        // A screen we can't name is let through rather than risk covering a prompt the parent needs.
+        packageName in PERMISSION_CONTROLLERS && (className.isBlank() || PERMISSION_PROMPTS.any { className.endsWith(".$it") })
 }
 
 /** The parent's lock code. Only a salted hash is kept, and only on the phone. */

@@ -149,7 +149,10 @@ service cloud.firestore {
     // ---- Paths -------------------------------------------------------------------------
 
     match /families/{familyId} {
-      allow read: if isHelper(familyId);
+      allow get: if isHelper(familyId);
+      // The dashboard lists "my families" with where('memberUids', 'array-contains', uid).
+      // A query can't be checked with get() on each result, only against the document itself.
+      allow list: if signedIn() && request.auth.uid in resource.data.get('memberUids', []);
 
       match /members/{uid} {
         // The phone reads members to show helper names and pending "Allow David to help?"

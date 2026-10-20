@@ -83,7 +83,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
 
     GuardianPage("What my family can see", actions::onBack) {
         Text(
-            "Guardian Mode shares a few safety alerts with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off.",
+            "Guardian Mode shares a few safety notes with the people you chose. It never shares your messages, what's said on calls, or where you are. You can turn any of it off.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
@@ -124,7 +124,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
             }
         }
 
-        Section("Alerts your family received")
+        Section("What your family was told")
         if (ui.shared.isEmpty()) {
             Text("None so far.", style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)
         }
@@ -177,7 +177,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
         AlertDialog(
             onDismissRequest = { confirmRemove = null },
             title = { Text("Remove ${helper.name}?", style = MaterialTheme.typography.headlineMedium) },
-            text = { Text("${helper.name} will stop getting alerts and can't change your phone anymore.", style = MaterialTheme.typography.bodyLarge) },
+            text = { Text("${helper.name} will stop getting notes from this phone and can't change it anymore.", style = MaterialTheme.typography.bodyLarge) },
             confirmButton = {
                 TextButton(onClick = { actions.onRemoveHelper(helper); confirmRemove = null }) { Text("Remove", style = MaterialTheme.typography.labelLarge) }
             },
@@ -188,7 +188,7 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
         AlertDialog(
             onDismissRequest = { confirmStop = false },
             title = { Text("Stop using Guardian Mode?", style = MaterialTheme.typography.headlineMedium) },
-            text = { Text("Your family will no longer get alerts or be able to help with this phone. You'll then choose a different home screen.", style = MaterialTheme.typography.bodyLarge) },
+            text = { Text("Your family will stop getting notes from this phone and won't be able to help with it. You'll then choose a different home screen.", style = MaterialTheme.typography.bodyLarge) },
             confirmButton = {
                 TextButton(onClick = { actions.onStopUsing(); confirmStop = false }) { Text("Stop", style = MaterialTheme.typography.labelLarge) }
             },
