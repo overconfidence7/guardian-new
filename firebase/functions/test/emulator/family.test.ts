@@ -151,7 +151,7 @@ describe("pairing", () => {
   // the helper; firestore.rules guards /families/{familyId} with isHelper(familyId), a
   // get() the rules can't evaluate for a list query ("Null value error"), so every such
   // query is denied and Root.tsx sends a returning helper to "create a family".
-  knownBug("GM-FAM-001 a returning helper can list the families they belong to (the dashboard's home query) [known bug DASH-LIST]", async () => {
+  it("GM-FAM-001 a returning helper can list the families they belong to (the dashboard's home query)", async () => {
     const mine = await getDocs(query(collection(sarah.db, "families"), where("memberUids", "array-contains", sarah.uid)));
     expect(mine.docs.map((d) => d.id)).toEqual([familyId]);
   });

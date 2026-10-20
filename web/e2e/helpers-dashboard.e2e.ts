@@ -64,10 +64,7 @@ async function joinAsPendingHelper(page: Page, family: Family, name: string): Pr
   return { uid: helper.uid };
 }
 
-// Root.tsx sends a helper whose family list query fails to /welcome; firestore.rules can't
-// evaluate isHelper(familyId) for that list query (see family.test.ts, DASH-LIST).
-test('GM-FAM-001 a returning helper who signs in lands on their family, not on "create a family" [known bug DASH-LIST]', async ({ page }) => {
-  test.skip(!process.env.INCLUDE_KNOWN_BUGS, 'known bug DASH-LIST: the families list query is denied by the rules');
+test('GM-FAM-001 a returning helper who signs in lands on their family, not on "create a family"', async ({ page }) => {
   const family = await pairedFamily();
   await signIn(page, family.sarahEmail);
   await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toBeVisible({ timeout: 15_000 });
@@ -147,8 +144,7 @@ test('GM-FAM-060 the dashboard shows the phone gone after "Stop using Guardian M
   await expect(page.getByText('No phones yet')).toBeVisible();
 });
 
-test('GM-SCRN-007 Sarah sets "Send to voicemail" on the dashboard and it reaches the config [known bug DASH-SAVE]', async ({ page }) => {
-  test.skip(!process.env.INCLUDE_KNOWN_BUGS, 'known bug DASH-SAVE: saveConfig sends serverTimestamp() through stripUndefined');
+test('GM-SCRN-007 Sarah sets "Send to voicemail" on the dashboard and it reaches the config', async ({ page }) => {
   const family = await pairedFamily();
   await signIn(page, family.sarahEmail);
   await page.goto(`/f/${family.familyId}/d/${family.deviceId}/protection`);

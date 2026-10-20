@@ -104,6 +104,10 @@ def parse_results(results_root: Path) -> list[Result]:
         suite = suite_of(f, results_root)
         for tc in root.iter("testcase"):
             bad = tc.find("failure") if tc.find("failure") is not None else tc.find("error")
+            # A failed JUnit assumption means "can't test this here", not a failure.
+            if bad is not None and "AssumptionViolatedException" in ((bad.get("type") or "") + (bad.get("message") or "") + (bad.text or "")[:400]):
+                bad = None
+                tc.append(ET.Element("skipped"))
             if bad is not None:
                 status = "failed"
                 message = (bad.get("message") or (bad.text or "")).strip().splitlines()[0:1]

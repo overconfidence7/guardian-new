@@ -1,7 +1,7 @@
 /*
  * Track B dashboard parts of GM-SCRN-007 (voicemail mode) and GM-FAM-042 (protection
  * settings from the dashboard), on the Protection tab with the demo API. Saving through
- * the real Firebase API is covered by the e2e suite (and blocked by DASH-SAVE today).
+ * the real Firebase API is covered by the e2e suite.
  */
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
