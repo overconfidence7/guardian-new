@@ -3,6 +3,7 @@ package app.guardianmode.ui
 import androidx.compose.ui.platform.LocalConfiguration
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -11,6 +12,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,12 +63,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
         setContent { Content() }
+        handlePauseRequest(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Pressing the Home button while already home always lands on the main screen.
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
+        handlePauseRequest(intent)
+    }
+
+    /** "Pause for 1 hour" from the notification: the same code check as the button on the transparency screen. */
+    private fun handlePauseRequest(intent: Intent) {
+        if (!intent.getBooleanExtra(EXTRA_PAUSE_HOUR, false)) return
+        intent.removeExtra(EXTRA_PAUSE_HOUR)
+        if (container.store.current.onboardingDone) transparencyActions.onPauseHour()
     }
 
     override fun onResume() {
@@ -97,6 +108,11 @@ class MainActivity : ComponentActivity() {
             }
         }
         GuardianTheme(state.config.display) {
+            // The safe word, helper names and the lock code stay out of screen recordings and shares.
+            SideEffect {
+                if (destination in SECURE_DESTINATIONS) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
             BackHandler(enabled = destination != DEST_HOME) { destination = if (destination == DEST_UNLOCK) unlockReturn else DEST_HOME }
             when (destination) {
                 DEST_APPS -> AllAppsScreen(
@@ -244,6 +260,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_DESTINATION = "destination"
+        const val EXTRA_PAUSE_HOUR = "pauseHour"
         const val DEST_HOME = "home"
         const val DEST_APPS = "apps"
         const val DEST_PHOTOS = "photos"
@@ -251,6 +268,7 @@ class MainActivity : ComponentActivity() {
         const val DEST_TRANSPARENCY = "transparency"
         const val DEST_UNLOCK = "unlock"
         private const val MAX_PICK = 10
+        private val SECURE_DESTINATIONS = setOf(DEST_TRANSPARENCY, DEST_UNLOCK, DEST_LOCK)
         const val DEST_LOCK = "lock"
     }
 }
