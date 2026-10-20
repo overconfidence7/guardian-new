@@ -626,11 +626,10 @@ describe("events from the phone", () => {
       expect(sent[0]!.message.data, c.type).toMatchObject({ type: "event", eventType: c.type, severity: c.severity, familyId, deviceId });
       expect((await admin().doc(path).get()).get("expireAt"), c.type).toBeInstanceOf(AdminTimestamp);
     }
-    // The case's example, word for word in the push (the dashboard words it slightly differently).
+    // The exact words are checked against SPEC F4 in test/unit/wording.test.ts (GM-COPY-002);
+    // here it's enough that the push names the parent and the app.
     const pause = await sendEvent(phone, phoneEvent("PAUSE_SHOWN", "NOTICE", cases[0]!.data));
-    expect((await pushesFor(pause)).sent[0]!.message.notification?.body).toBe(
-      "Mom opened Chase 4 minutes after a call from an unknown number, so the phone showed a pause card first.",
-    );
+    expect((await pushesFor(pause)).sent[0]!.message.notification?.body).toMatch(/^Mom opened Chase 4 minutes after a call from an unknown number/);
   });
 
   it("GM-FAM-040 PERMISSION_MISSING is recorded for the dashboard but not pushed", async () => {
