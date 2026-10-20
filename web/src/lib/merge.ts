@@ -51,10 +51,21 @@ export function changedPaths(a: Json, b: Json, prefix = ''): string[] {
   return [prefix || '(root)'];
 }
 
-/** Remove `undefined` values recursively so Firestore accepts the document. */
+/** Object literals only, so Firestore values such as `serverTimestamp()` or a `Timestamp` are left as they are. */
+function isLiteralObject(v: Json): v is Record<string, Json> {
+  if (!isPlainObject(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+/**
+ * Remove `undefined` values recursively so Firestore accepts the document. Field values
+ * like `serverTimestamp()` pass through untouched: copied into a plain object they'd be
+ * written as data, and the rules rejecting `updatedAt != request.time` would refuse the save.
+ */
 export function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map((v) => stripUndefined(v)) as T;
-  if (isPlainObject(value)) {
+  if (isLiteralObject(value)) {
     const out: Record<string, Json> = {};
     for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = stripUndefined(v);
     return out as T;

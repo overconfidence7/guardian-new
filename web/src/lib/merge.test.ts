@@ -1,3 +1,4 @@
+import { serverTimestamp } from 'firebase/firestore';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../../shared/fixtures/device-config.example.json';
 import { changedPaths, deepEqual, stripUndefined, threeWayMerge } from './merge';
@@ -61,5 +62,12 @@ describe('helpers', () => {
   });
   it('stripUndefined', () => {
     expect(stripUndefined({ a: undefined, b: [{ c: undefined, d: 1 }], e: null })).toEqual({ b: [{ d: 1 }], e: null });
+  });
+  it('stripUndefined leaves Firestore field values such as serverTimestamp() alone', () => {
+    const stamp = serverTimestamp();
+    const out = stripUndefined({ updatedAt: stamp, nested: { at: stamp, gone: undefined } });
+    expect(out.updatedAt).toBe(stamp);
+    expect(out.nested).toEqual({ at: stamp });
+    expect(out.nested.at).toBe(stamp);
   });
 });

@@ -18,10 +18,12 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
   Timestamp,
   updateDoc,
+  where,
   type DocumentData,
   type Firestore,
 } from "firebase/firestore";
@@ -150,6 +152,17 @@ describe("families", () => {
     await assertFails(getDoc(doc(db(as("pending")), fam())));
     await assertFails(getDoc(doc(db(as("phone")), fam())));
     await assertFails(getDoc(doc(db(env.unauthenticatedContext()), fam())));
+  });
+  it("helpers list their own families, the way the dashboard does", async () => {
+    const mine = (uid: "helper" | "pending") =>
+      getDocs(query(collection(db(as(uid)), "families"), where("memberUids", "array-contains", uid)));
+    const found = await assertSucceeds(mine("helper"));
+    if (!found.docs.some((d) => d.id === F)) throw new Error("helper's family missing from the list");
+    await assertSucceeds(mine("pending"));
+  });
+  it("nobody lists families they aren't in", async () => {
+    await assertFails(getDocs(collection(db(as("helper")), "families")));
+    await assertFails(getDocs(query(collection(db(as("stranger")), "families"), where("memberUids", "array-contains", "helper"))));
   });
   it("nobody writes the family doc directly", async () => {
     await assertFails(updateDoc(doc(db(as("owner")), fam()), { plan: "family" }));

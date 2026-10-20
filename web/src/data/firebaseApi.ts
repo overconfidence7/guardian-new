@@ -6,7 +6,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   isSignInWithEmailLink,
-  onAuthStateChanged,
+  onIdTokenChanged,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
@@ -231,7 +231,16 @@ const isStandalone = () =>
 const authApi: AuthApi = {
   onUser(cb) {
     const { auth } = getServices();
-    return onAuthStateChanged(auth, (u) => cb(u && !u.isAnonymous ? toUser(u) : null));
+    // Token changes, not just sign-in changes, so a name set right after sign-up (devSignIn) reaches the UI.
+    // Hourly token refreshes are dropped unless something the UI shows changed.
+    let last: string | undefined;
+    return onIdTokenChanged(auth, (u) => {
+      const user = u && !u.isAnonymous ? toUser(u) : null;
+      const key = JSON.stringify(user);
+      if (key === last) return;
+      last = key;
+      cb(user);
+    });
   },
   async signInWithGoogle() {
     const { auth } = getServices();
@@ -289,6 +298,8 @@ const authApi: AuthApi = {
             const name = email.split('@')[0] ?? 'Helper';
             await updateProfile(cred.user, { displayName: name.charAt(0).toUpperCase() + name.slice(1) });
             await cred.user.reload();
+            // Fires onIdTokenChanged again with the name, which onAuthStateChanged never would.
+            await cred.user.getIdToken(true);
           } else {
             throw e;
           }

@@ -2,6 +2,18 @@
 
 Problems spotted by reading the code on 2026-10-20 (commit 23dbb63), before any device testing. None of these is confirmed. For each one: reproduce it on a device (or show it can't happen), mark it **Confirmed**, **Ruled out** or **Partly**, attach evidence, and turn every confirmed one into a bug in the report. Line numbers may have drifted; search for the quoted code.
 
+## Verdicts so far
+
+From the partial run on 2026-10-19 (`2cd6b8e`, `gm-api36`). Fixes landed in PR #6. Re-check these on the next run rather than skipping them.
+
+| ID | Verdict | Note |
+|---|---|---|
+| S-06 | Confirmed | "Alerts your family received" shown in solo mode; heading is now "What your family was told". The solo-mode honesty question is still open. |
+| S-08 | Confirmed, fixed | Five parent-facing hits (BUG-005). |
+| S-09 | Ruled out | At Locked the Pixel launcher got a code screen, but it showed the package name; now "This app is locked". |
+| S-11 | Partly | Settings stayed uncovered in `GM-LOCK-041`; the run didn't record which permission was missing. Re-test. |
+| S-12 | Confirmed, fixed | Contacts was switched off from the permission manager without the code. The manager is now covered; permission prompts still show. |
+
 ### S-01 · Track B pairing may fail: no cleartext exception for the emulator host  (blocks Track B)
 `android/app/src/main/AndroidManifest.xml` has no `networkSecurityConfig` and there is no `src/debug` source set. Since Android 9, plain `http://` is blocked unless allowed, and the Firebase Auth, Functions and Storage emulators are plain HTTP on `10.0.2.2`. Firebase's own docs say Android apps need a cleartext exception for the emulator host.
 - Check: Track B build, tap "Set up with my family", enter a real setup code from the dashboard. Look for `CLEARTEXT communication to 10.0.2.2 not permitted` in logcat, or the "That didn't work" message.

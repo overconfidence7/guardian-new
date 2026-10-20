@@ -204,7 +204,7 @@ private fun HelperIntro(actions: OnboardingActions) {
                 .padding(18.dp),
         ) {
             Text(
-                "Linking phones isn't turned on in this test version yet. For now, set up their phone with \"Make this phone simpler\".",
+                "Linking phones isn't working in this test version yet. For now, on their phone pick \"Make this phone simpler\", then \"Set up on my own for now\".",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Guardian.colors.onPauseSurface,
             )
@@ -356,7 +356,7 @@ private fun Confirm(preview: InvitePreview?, busy: Boolean, error: String?, acti
         Spacer(Modifier.height(20.dp))
         Title("$helper would like to be your helper.")
         Spacer(Modifier.height(16.dp))
-        Lead("Helpers can set up your home screen, send you photos, and get a note if something looks like a scam. Next you'll pick what to turn on, and you can remove a helper whenever you want.")
+        Lead("Helpers can set up your home screen, send you photos, and get a note when a pause card comes up. Next you'll pick what to turn on, and you can remove a helper whenever you want.")
         error?.let {
             Spacer(Modifier.height(16.dp))
             Text(it, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)

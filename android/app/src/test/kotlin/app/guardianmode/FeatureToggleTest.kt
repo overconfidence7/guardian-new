@@ -8,6 +8,8 @@ import app.guardianmode.core.GuardianAction
 import app.guardianmode.core.AppCategory
 import app.guardianmode.cloud.CloudSync
 import app.guardianmode.ui.onboarding.extractSetupCode
+import app.guardianmode.ui.onboarding.withConsent
+import app.guardianmode.protection.Features
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -21,6 +23,18 @@ class FeatureToggleTest {
             val on = off.withFeature(key, true)
             assertThat(Transparency.items(on).single { it.key == key }.enabled).isTrue()
         }
+    }
+
+    @Test fun `saying not now during setup turns that page's features off`() {
+        val off = Fixtures.config
+            .withConsent(Features.PAUSE, false)
+            .withConsent(Features.CALLS, false)
+            .withConsent(Features.CHECK_IN, false)
+        val shown = Transparency.items(off).associate { it.key to it.enabled }
+        listOf("pause", "remoteAccess", "screening", "longCall", "checkIn").forEach { assertThat(shown[it]).isFalse() }
+        val back = off.withConsent(Features.PAUSE, true)
+        assertThat(back.protection.pauseTripwires.enabled).isTrue()
+        assertThat(back.protection.remoteAccessAlarm.enabled).isTrue()
     }
 
     @Test fun `turning screening back on uses the gentle mode`() {

@@ -40,10 +40,10 @@ class LockManager(
         hasCode && store.current.onboardingDone && !isUnlocked() && LockPolicy.needsCode(action, level)
 
     /** True when a code screen should cover [packageName], which just came to the front. */
-    fun blocks(packageName: String): Boolean {
+    fun blocks(packageName: String, className: String = ""): Boolean {
         val s = store.current
         if (!hasCode || !s.onboardingDone || s.config.lock.level != LockLevel.LOCKED) return false
-        return LockPolicy.blocks(packageName, s.config.lock, allowedPackages(), isUnlocked())
+        return LockPolicy.blocks(packageName, s.config.lock, allowedPackages(), isUnlocked(), className)
     }
 
     suspend fun setCode(code: String) {
