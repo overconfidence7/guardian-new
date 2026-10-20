@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { centerSquare, fitWithin, PHOTO_MAX_EDGE } from './image';
+import rules from '../../../firebase/firestore.rules?raw';
+import { centerSquare, fitWithin, PHOTO_CAPTION_MAX, PHOTO_MAX_EDGE } from './image';
+
+describe('photo captions', () => {
+  it('allow as many characters as firestore.rules does (200)', () => {
+    expect(PHOTO_CAPTION_MAX).toBe(200);
+    expect(rules).toContain(`isShortString(request.resource.data.caption, ${PHOTO_CAPTION_MAX})`);
+  });
+});
+
 
 describe('fitWithin', () => {
   it('scales the longest edge to the limit, keeping aspect ratio', () => {

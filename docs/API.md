@@ -53,7 +53,7 @@ families/{familyId}/devices/{deviceId}/events/{eventId}
   deliveredTo: string[] (set by functions)
 
 families/{familyId}/devices/{deviceId}/photos/{photoId}
-  storagePath, fromUid, fromName, caption, createdAt
+  storagePath, fromUid, fromName, caption (≤ 200 chars), createdAt
 
 families/{familyId}/devices/{deviceId}/changes/{changeId}
   byUid, byName, summary, at         # written by onConfigWritten, shown on the phone
