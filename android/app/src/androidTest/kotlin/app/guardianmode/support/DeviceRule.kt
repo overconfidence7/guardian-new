@@ -278,6 +278,10 @@ class DeviceRule(
     /** A real incoming call from [number]; returns once it rings (state 1). */
     fun ring(number: String): Boolean {
         requireConsole()
+        if (callState() != 0) {
+            Log.w(TAG, "a call was still up before ringing ${number.takeLast(4)}; ending it")
+            hangUpEverything()
+        }
         EmulatorConsole.incomingCall(number)
         return waitForCallState(1)
     }
@@ -321,12 +325,28 @@ class DeviceRule(
         waitForCallState(2)
     }
 
+    /**
+     * Ends every call, however it was made. The modem doesn't always list calls the phone
+     * placed, so Telecom is asked too (with the shell's ANSWER_PHONE_CALLS, as adb could),
+     * and ENDCALL is the last resort. A call left up makes the next test's incoming call
+     * "waiting" instead of ringing.
+     */
     fun hangUpEverything() {
         if (EmulatorConsole.available) runCatching { EmulatorConsole.hangUpAll() }
-        if (!waitForCallState(0, timeoutMs = 5_000) && callState() != 0) {
+        if (waitForCallState(0, timeoutMs = 3_000)) return
+        repeat(3) { attempt ->
+            runCatching {
+                asShell(Manifest.permission.ANSWER_PHONE_CALLS) {
+                    @Suppress("DEPRECATION")
+                    context.getSystemService(android.telecom.TelecomManager::class.java).endCall()
+                }
+            }
+            if (waitForCallState(0, timeoutMs = 3_000)) return
             // ENDCALL with no call puts the screen to sleep, so only send it while a call is up.
-            shell("input keyevent KEYCODE_ENDCALL")
-            waitForCallState(0)
+            if (callState() != 0) shell("input keyevent KEYCODE_ENDCALL")
+            if (waitForCallState(0, timeoutMs = 3_000)) return
+            if (EmulatorConsole.available) runCatching { EmulatorConsole.hangUpAll() }
+            Log.w(TAG, "call still up after hang-up try ${attempt + 1}: state=${callState()} gsm=${runCatching { EmulatorConsole.list().trim() }.getOrDefault("?")}")
         }
     }
 

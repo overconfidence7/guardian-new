@@ -15,7 +15,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 MAX_NOTICES = 9
-MAX_CHARS = 7000
+MAX_CHARS = 20000
 
 
 def failures(xml_dir):
@@ -29,7 +29,11 @@ def failures(xml_dir):
             for bad in list(case.findall("failure")) + list(case.findall("error")):
                 text = (bad.get("message") or bad.text or "").strip()
                 first = (text.splitlines() or [""])[0]
-                rows.append((case.get("classname", "").rsplit(".", 1)[-1], case.get("name", ""), first[:300]))
+                cls = case.get("classname", "").rsplit(".", 1)[-1]
+                # Where in the test it failed: the first stack line in the test's own file.
+                body = bad.text or ""
+                where = re.search(rf"\(({re.escape(cls)}\.kt:\d+)\)", body) or re.search(r"\((\w+(?:Test|Rule)\.kt:\d+)\)", body)
+                rows.append((cls, case.get("name", ""), (f"[{where.group(1)}] " if where else "") + first[:300]))
                 break
     return rows
 
@@ -80,7 +84,7 @@ def main():
         if chunk and len(chunk) + len(b) > MAX_CHARS:
             notices.append(chunk)
             chunk = ""
-        chunk += b[:MAX_CHARS] + "\n"
+        chunk += b[:6000] + "\n"
     if chunk:
         notices.append(chunk)
     if len(notices) > MAX_NOTICES:
