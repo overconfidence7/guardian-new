@@ -23,7 +23,7 @@ The report says what newly failed, which known bugs are still open (or now pass)
 
 ## The daily check
 
-A Claude scheduled task runs after the workflow each day. It reads the issue (or the run, if the issue wasn't updated), and:
+A Claude scheduled task ("Daily test review") runs at 11:47 UTC each day, after the workflow. It reads the issue (or the run, if the issue wasn't updated), and:
 
 1. **New failure in a test or workflow**: finds the cause, fixes it, opens a PR.
 2. **New failure that's a real app bug**: opens a PR with the fix and a test, or, if it's a product decision, tells Nate in the project.
