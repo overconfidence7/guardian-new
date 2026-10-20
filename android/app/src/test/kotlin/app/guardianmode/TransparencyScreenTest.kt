@@ -203,6 +203,9 @@ class TransparencyScreenTest {
             runBlocking {
                 repeat(32) { i -> store.recordShared(GuardianEvent("e$i", EventType.PAUSE_SHOWN, i.toLong(), Severity.NOTICE, mapOf("app" to "App$i"))) }
             }
+            // store.current is a StateFlow that catches up a moment after the last DataStore write.
+            val deadline = System.currentTimeMillis() + 5_000
+            while (store.current.sharedEvents.firstOrNull()?.id != "e31" && System.currentTimeMillis() < deadline) Thread.sleep(20)
             val kept = store.current.sharedEvents
             assertThat(kept).hasSize(30)
             assertThat(kept.first().id).isEqualTo("e31")
