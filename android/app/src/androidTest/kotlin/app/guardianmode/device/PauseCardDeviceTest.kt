@@ -322,7 +322,6 @@ class PauseCardDeviceTest {
      * notification's "Pause for 1 hour" pauses straight away (Receivers.kt ACTION_PAUSE_HOUR).
      * Also GM-SCAM-005 step 1 and GM-TRAN-010's notification half.
      */
-    @KnownBug("S-03")
     @Test fun gm_pause_032_gm_scam_005_gm_tran_010_notificationPauseNeedsCodeAtGuidedAndLocked() {
         for (level in listOf(LockLevel.GUIDED, LockLevel.LOCKED)) {
             rule.setLock(level)

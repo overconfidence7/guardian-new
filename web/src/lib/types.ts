@@ -2,7 +2,7 @@
  * Firestore documents as the dashboard sees them (docs/API.md). Timestamps are
  * converted to epoch milliseconds by the data layer so screens never touch SDK types.
  */
-import type { AppCategory, DeviceConfig, EventType, Severity } from './model';
+import type { AnyEventType, AppCategory, DeviceConfig, Severity } from './model';
 
 export type Millis = number;
 
@@ -73,7 +73,7 @@ export interface ConfigDoc {
 
 export interface EventDoc {
   id: string;
-  type: EventType;
+  type: AnyEventType;
   severity: Severity;
   /** Phone clock, ms. */
   at: Millis;

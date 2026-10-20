@@ -3,6 +3,7 @@ package app.guardianmode.ui.cards
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -29,6 +30,9 @@ class GuardianCardActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Cards carry the safe word and the lock code entry, and a caller may be watching
+        // through a screen-sharing app, so they never show up in a recording or a screenshot.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         request = read(intent)
         if (request == null) {
             finish()

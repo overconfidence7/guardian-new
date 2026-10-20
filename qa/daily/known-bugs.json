@@ -1,48 +1,5 @@
 {
   "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
-  "LONGCALL-URGENT": {
-    "title": "Long-call notice isn't urgent after a money app when pause cards are off (TripwireEngine.kt:117 returns before noting the app)",
-    "owner": "unassigned",
-    "tests": [
-      "gm_call_003_urgentAfterBankAppEvenWithPauseCardsOff"
-    ]
-  },
-  "S-17": {
-    "title": "Helpers can make risky changes (numbers, trusted apps, turning protection off, remote unlock) without the parent's approval",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "[known bug S-17]"
-    ]
-  },
-  "SEC-3-NOTICE": {
-    "title": "Helpers aren't told when another helper is approved, declined or removed (SECURITY.md §3/§6)",
-    "owner": "unassigned",
-    "tests": [
-      "[known bug SEC-3 helper notice]"
-    ]
-  },
-  "EVENT-KEYS": {
-    "title": "Event data with undocumented keys (a phone number, a message) is accepted by the rules (firestore.rules:74)",
-    "owner": "unassigned",
-    "tests": [
-      "[known bug event data keys unchecked]"
-    ]
-  },
-  "COPY-F4": {
-    "title": "Pause-card push wording differs from SPEC F4 (copy.ts:137,147)",
-    "owner": "unassigned",
-    "tests": [
-      "[known bug copy differs from SPEC F4]"
-    ]
-  },
-  "TRIPWIRE-MEMORY": {
-    "title": "The 30-minute window after an unknown call lives only in memory (TripwireEngine.kt:44), so no pause card if Android kills Guardian or the phone restarts after the call",
-    "owner": "unassigned",
-    "tests": [
-      "gm_pause_042_processKilledAfterCall",
-      "gm_pause_043_gm_svc_006_pauseCardAfterReboot"
-    ]
-  },
   "BOOT-API29": {
     "title": "On Android 10 the service isn't back within 90 s of a restart (fine on Android 16); BOOT_COMPLETED start in Receivers.kt:31",
     "owner": "unassigned",
@@ -57,13 +14,6 @@
       "gm_perf_007_homeScreenMemory"
     ]
   },
-  "S-03": {
-    "title": "The notification's \"Pause for 1 hour\" skips the lock code (Receivers.kt:48)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_pause_032_gm_scam_005_gm_tran_010"
-    ]
-  },
   "S-13": {
     "title": "Family calls arm pause cards' contact check even when Guardian isn't the call screener (GuardianBrain.kt:38)",
     "owner": "Antigravity test suite thread",
@@ -71,53 +21,18 @@
       "gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm"
     ]
   },
-  "S-05": {
-    "title": "The notification keeps saying paused after the pause ends (GuardianService.kt:72 distinctUntilChanged)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_tran_009_notificationStopsSayingPausedWhenThePauseEnds"
-    ]
-  },
-  "S-02": {
-    "title": "Transparency and safe-word screens aren't FLAG_SECURE, so screen sharing can show them",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_tran_015_gm_priv_013"
-    ]
-  },
-  "S-11": {
-    "title": "At Locked without overlay permission or the home role, a code screen only posts a notification (CardLauncher.kt:26)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_lock_041_lockedWithoutOverlayOrHomeRoleStillCovers"
-    ]
-  },
-  "S-06": {
-    "title": "Solo mode lists events under \"What your family was told\" (LocalStore.kt:62 records with no family; TransparencyScreen.kt:127 ignores paired)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_tran_007_soloModeDoesNotClaimTheFamilyReceivedAlerts"
-    ]
-  },
-  "S-07": {
-    "title": "Solo Help screen has only Back (HelpActivity HelpContent)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_help_001_soloHelpIsNotADeadEnd"
-    ]
-  },
-  "A11Y-64DP": {
-    "title": "Several buttons, switches and fields are 48-57 dp; SPEC bar 8 asks for 64 dp",
-    "owner": "unassigned",
-    "tests": [
-      "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
-    ]
-  },
   "REMOVE-PERMISSION": {
     "title": "\"Remove <app>\" on the remote-control warning flashes Android's uninstaller, which closes at once: Guardian doesn't declare REQUEST_DELETE_PACKAGES (AndroidManifest.xml; Launch.kt:45 sends ACTION_DELETE)",
     "owner": "unassigned",
     "tests": [
       "gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation"
+    ]
+  },
+  "A11Y-64DP": {
+    "title": "The home screen's shield chip (\"Protected\") is 56 dp tall; SPEC bar 8 asks for 64 dp",
+    "owner": "unassigned",
+    "tests": [
+      "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
     ]
   }
 }

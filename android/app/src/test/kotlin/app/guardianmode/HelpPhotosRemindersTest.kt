@@ -27,7 +27,6 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
-import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
@@ -54,7 +53,6 @@ class HelpPhotosRemindersTest {
     }
 
     /** S-07: a solo parent who taps Help must find something on the page that helps. */
-    @Category(KnownBug::class)
     @Test fun gm_help_001_soloHelpIsNotADeadEnd() {
         openHelp(UiChecks.soloState()).use {
             rule.onNodeWithText("Ask your family for help").assertExists()
@@ -66,7 +64,7 @@ class HelpPhotosRemindersTest {
     @Test fun gm_help_002_familyButNotLinkedOffersACall() {
         openHelp(UiChecks.familyState()).use { scenario ->
             rule.onNodeWithText("Ask Sarah for help").assertExists()
-            rule.onNodeWithText("You can call your family for help.").assertExists()
+            rule.onNodeWithText("You can call Sarah for help.").assertExists()
             rule.onNodeWithText("Take a picture of my screen").assertDoesNotExist()
             rule.onNode(hasText("Call Sarah") and hasClickAction()).performClick()
             scenario.onActivity { activity ->

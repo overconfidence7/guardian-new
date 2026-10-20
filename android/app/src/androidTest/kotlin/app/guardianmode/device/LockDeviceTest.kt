@@ -276,7 +276,6 @@ class LockDeviceTest {
     }
 
     /** S-11: without overlay and the Home role, CardLauncher only posts a notification, which covers nothing. */
-    @KnownBug("S-11")
     @Test fun gm_lock_041_lockedWithoutOverlayOrHomeRoleStillCovers() {
         rule.setLock(LockLevel.LOCKED)
         rule.shell("appops set ${rule.pkg} SYSTEM_ALERT_WINDOW deny")

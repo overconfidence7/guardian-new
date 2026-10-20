@@ -105,7 +105,11 @@ class ProtectionController(
     fun needsAttention(): Boolean {
         val consent = store.current.consent
         val noProtection = consent[Features.PAUSE] != true && consent[Features.CALLS] != true
-        return noProtection || missingCapabilities().isNotEmpty()
+        // At Locked, covering an app needs one of these; without either the cover is only a notification.
+        val state = store.current
+        val lockCantCover = state.config.lock.level == LockLevel.LOCKED && state.lockCodeHash.isNotEmpty() &&
+            !capabilities.has(Capability.OVERLAY) && !capabilities.has(Capability.HOME_APP)
+        return noProtection || lockCantCover || missingCapabilities().isNotEmpty()
     }
 
     companion object {

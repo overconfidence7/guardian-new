@@ -103,7 +103,6 @@ class TransparencyDeviceTest {
     }
 
     /** S-05: the service rebuilds the notification only when saved state changes, not when the hour runs out. */
-    @KnownBug("S-05")
     @Test fun gm_tran_009_notificationStopsSayingPausedWhenThePauseEnds() {
         rule.updateState { it.copy(pausedUntil = System.currentTimeMillis() + 5_000) }
         assertThat(rule.waitUntil { rule.protectionNotification()?.notification?.extras?.getString("android.title") == "Guardian Mode is paused" }).isTrue()
@@ -112,7 +111,6 @@ class TransparencyDeviceTest {
     }
 
     /** S-02 / docs/SECURITY.md §4: FLAG_SECURE on the transparency and safe-word screens. Also GM-PRIV-013. */
-    @KnownBug("S-02")
     @Test fun gm_tran_015_gm_priv_013_transparencyAndSafeWordScreensAreSecure() {
         rule.setState(DeviceFixtures.familyState)
         rule.openTransparency()

@@ -16,6 +16,7 @@ import {
   readDeviceConfig,
 } from "../../src/lib/model.js";
 import { fixtureJson, REPO_ROOT } from "./fixture.js";
+import { RISKY_CHANGE_KEYS } from "../../src/lib/changeRequests.js";
 
 const kotlin = readFileSync(`${REPO_ROOT}core/src/main/kotlin/app/guardianmode/core/Model.kt`, "utf8");
 const rules = readFileSync(`${REPO_ROOT}firebase/firestore.rules`, "utf8");
@@ -50,6 +51,17 @@ describe("firestore.rules event allowlist", () => {
     const block = /function validEventType\(t\) \{[\s\S]*?\[([\s\S]*?)\]/.exec(rules)![1]!;
     const listed = [...block.matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]);
     expect(listed).toEqual(EVENT_TYPES.filter((t) => t !== "CHECK_IN_MISSED"));
+  });
+
+  it("names the allowed data keys for every type the phone may send", () => {
+    const block = /function eventDataKeys\(t\) \{([\s\S]*?)\}\[t\]/.exec(rules)![1]!;
+    const types = [...block.matchAll(/'([A-Z_]+)': \[/g)].map((m) => m[1]);
+    expect(types).toEqual(EVENT_TYPES.filter((t) => t !== "CHECK_IN_MISSED"));
+  });
+
+  it("knows the same risky change keys as the functions", () => {
+    const block = /c\.keys\(\)\.hasOnly\(\[([^\]]*)\]\)/.exec(rules)![1]!;
+    expect([...block.matchAll(/'(\w+)'/g)].map((m) => m[1])).toEqual([...RISKY_CHANGE_KEYS]);
   });
 
   it("lists every Severity", () => {

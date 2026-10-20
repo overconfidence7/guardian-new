@@ -59,9 +59,14 @@ class LocalStore internal constructor(
 
     suspend fun update(transform: (LocalState) -> LocalState): LocalState = store.updateData(transform)
 
+    /**
+     * Queues an event for the family and lists it on the transparency screen. With no
+     * family linked it is only listed: nothing is queued, so it can't go out later to
+     * whoever joins.
+     */
     suspend fun recordShared(event: GuardianEvent) = update {
         it.copy(
-            outbox = (it.outbox + event).takeLast(LocalState.MAX_OUTBOX),
+            outbox = if (it.pairing == null) it.outbox else (it.outbox + event).takeLast(LocalState.MAX_OUTBOX),
             sharedEvents = (listOf(event) + it.sharedEvents).take(LocalState.MAX_SHARED_HISTORY),
         )
     }

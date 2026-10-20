@@ -21,8 +21,6 @@ import { getBytes, ref, uploadBytes } from "firebase/storage";
 import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
 import { defaultDeviceConfig } from "../../src/lib/defaultConfig.js";
 
-const knownBug = it.skipIf(!process.env.INCLUDE_KNOWN_BUGS);
-
 const FIREBASE_DIR = fileURLToPath(new URL("../../../", import.meta.url));
 const F = "fam_security";
 const D = "dev_security";
@@ -109,33 +107,33 @@ beforeEach(async () => {
 // ---------------------------------------------------------------------------------------
 
 describe("risky changes are held for the parent (docs/SECURITY.md §3, suspect S-17)", () => {
-  knownBug("GM-FAM-043 a helper can't mark a remote-control app as trusted without the parent [known bug S-17]", async () => {
+  it("GM-FAM-043 a helper can't mark a remote-control app as trusted without the parent", async () => {
     await assertFails(davidEdits({ "protection.remoteAccessAlarm.trustedPackages": [ANYDESK] }));
   });
 
-  knownBug("GM-FAM-044 a helper can't change a family member's phone number without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't change a family member's phone number without the parent", async () => {
     const family = (baseConfig().family as DocumentData[]).map((f) => (f.name === "Sarah" ? { ...f, phone: "+1 555 010 9999" } : f));
     await assertFails(davidEdits({ family }));
   });
 
-  knownBug("GM-FAM-044 a helper can't change the primary helper without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't change the primary helper without the parent", async () => {
     const family = (baseConfig().family as DocumentData[]).map((f) => ({ ...f, isPrimaryHelper: f.name === "David" }));
     await assertFails(davidEdits({ family }));
   });
 
-  knownBug("GM-FAM-044 a helper can't turn off pause cards from the dashboard without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't turn off pause cards from the dashboard without the parent", async () => {
     await assertFails(davidEdits({ "protection.pauseTripwires.enabled": false }));
   });
 
-  knownBug("GM-FAM-044 a helper can't turn off the remote-control warning from the dashboard without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't turn off the remote-control warning from the dashboard without the parent", async () => {
     await assertFails(davidEdits({ "protection.remoteAccessAlarm.enabled": false }));
   });
 
-  knownBug("GM-FAM-044 a helper can't turn off long-call notices from the dashboard without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't turn off long-call notices from the dashboard without the parent", async () => {
     await assertFails(davidEdits({ "protection.longCallAlert.enabled": false }));
   });
 
-  knownBug("GM-FAM-044 a helper can't unlock the phone remotely (lock.remoteUnlockUntil) without the parent [known bug S-17]", async () => {
+  it("GM-FAM-044 a helper can't unlock the phone remotely (lock.remoteUnlockUntil) without the parent", async () => {
     await assertFails(davidEdits({ "lock.remoteUnlockUntil": Date.now() + 10 * 60_000 }));
   });
 
@@ -193,7 +191,7 @@ describe("events carry only the documented keys (docs/API.md \"Event data keys\"
 
   // firestore.rules validEventData bounds the size of `data` but not its keys, so a phone
   // (or a tampered app) can put a caller's number or message text into an event.
-  knownBug("GM-PRIV-002 GM-FAM-046 event data with undocumented keys (a number, a message) is refused [known bug event data keys unchecked]", async () => {
+  it("GM-PRIV-002 GM-FAM-046 event data with undocumented keys (a number, a message) is refused", async () => {
     await assertFails(send(event("PAUSE_SHOWN", "NOTICE", { app: "Chase", number: "+15550109999" })));
     await assertFails(send(event("LONG_UNKNOWN_CALL", "URGENT", { minutes: "20", caller: "+15550109999" })));
     await assertFails(send(event("HELP_REQUESTED", "URGENT", { note: "Is this real?", message: "Your code is 123456" })));

@@ -61,6 +61,35 @@ class TripwireEngineTest {
         assertEquals(EventType.PAUSE_CONTINUED, events(outcome).single().type)
     }
 
+    @Test fun `gm_pause_042 gm_pause_043 the window after a call survives Guardian being restarted`() {
+        unknownCall(0, 5)
+        val saved = engine.lastUnknownCallEndedAt
+        // A fresh engine, as after Android killed the app or the phone restarted.
+        val restarted = TripwireEngine({ config }, newId = { "r${ids++}" }, restoredCallEndedAt = saved)
+        assertTrue(restarted.onForeground("com.chase.sig.android", "Chase", 12 * m).any { it is GuardianAction.ShowPauseCard })
+        val late = TripwireEngine({ config }, newId = { "l${ids++}" }, restoredCallEndedAt = saved)
+        assertTrue(late.onForeground("com.chase.sig.android", "Chase", 40 * m).isEmpty())
+    }
+
+    @Test fun `gm_call_003 long call is urgent after a bank app even with pause cards off`() {
+        config = config.copy(protection = config.protection.copy(pauseTripwires = config.protection.pauseTripwires.copy(enabled = false)))
+        tracker.onScreened("5559998888", unknown = true, at = 0)
+        tracker.onCallState(PhoneCallState.RINGING, 100).forEach { engine.onCall(it, 100) }
+        tracker.onCallState(PhoneCallState.OFFHOOK, 1_000).forEach { engine.onCall(it, 1_000) }
+        assertTrue(engine.onForeground("com.chase.sig.android", "Chase", 2 * m).isEmpty())
+        val long = events(engine.onTick(25 * m)).single()
+        assertEquals(EventType.LONG_UNKNOWN_CALL, long.type)
+        assertEquals(Severity.URGENT, long.severity)
+    }
+
+    @Test fun `gm_pause_022 going home from a pause card asks again next time`() {
+        unknownCall(0, 5)
+        assertTrue(engine.onForeground("com.chase.sig.android", "Chase", 6 * m).isNotEmpty())
+        engine.onPauseOutcome("com.chase.sig.android", "Chase", PauseOutcome.CLOSED, 6 * m)
+        engine.onForeground(LAUNCHER, "Home", 7 * m)
+        assertTrue(engine.onForeground("com.chase.sig.android", "Chase", 8 * m).any { it is GuardianAction.ShowPauseCard })
+    }
+
     @Test fun `gm_pause_024 a new unknown call re-arms dismissed tripwires`() {
         unknownCall(0, 5)
         engine.onForeground("com.chase.sig.android", "Chase", 6 * m)

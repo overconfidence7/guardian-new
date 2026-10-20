@@ -263,19 +263,14 @@ class PauseCardsTest {
         assertTrue(phone.engine.isArmed(phone.now))
     }
 
-    /**
-     * Suspect S-15. "Go to my home screen" records nothing, and the bank category stays
-     * used for this call, so Chase opens straight in the second time. That follows the
-     * spec's "once per app category per call" (F4), so it is asserted as current and
-     * spec-conforming behavior; whether the second open should ask again is for Nate.
-     */
-    @Test fun gm_pause_022_goHomeRecordsNothingAndUsesUpTheCategory() {
+    /** "Go to my home screen" records nothing and doesn't use up the category: Chase asks again next time. */
+    @Test fun gm_pause_022_goHomeRecordsNothingAndAsksAgainNextTime() {
         val phone = PhoneSim()
         phone.standardCall()
         assertTrue(phone.open(CHASE, "Chase").pauseCards().isNotEmpty())
         assertTrue(phone.pauseOutcome(CHASE, "Chase", PauseOutcome.CLOSED).isEmpty())
         phone.goHome()
-        assertTrue(phone.open(CHASE, "Chase").isEmpty(), "S-15: no card the second time in the same call")
+        assertTrue(phone.open(CHASE, "Chase").pauseCards().isNotEmpty(), "asks again after going home from the card")
     }
 
     @Test fun gm_pause_023_oncePerCategoryPerCall() {

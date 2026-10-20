@@ -7,8 +7,6 @@ import { describe, expect, it } from "vitest";
 import { FEATURE_LABELS, PERMISSION_LABELS, notificationCopy } from "../../src/copy.js";
 import { APP_CATEGORIES, EVENT_TYPES, SEVERITIES, type EventType, type Severity } from "../../src/lib/model.js";
 
-const knownBug = it.skipIf(!process.env.INCLUDE_KNOWN_BUGS);
-
 /** Realistic data per type, as the phone (TripwireEngine, HelpActivity) and the server send it. */
 function samples(type: EventType): Record<string, string>[] {
   const app = APP_CATEGORIES.map((category) => ({ app: "Chase", category }));
@@ -87,7 +85,7 @@ describe("GM-COPY-002 the push wording says what docs/SPEC.md's examples say", (
   // SPEC F4: Helpers get a notice ("Mom opened Chase 4 minutes after a call from an unknown
   // number. A pause card was shown."). The dashboard (web/src/lib/eventText.ts) uses that
   // sentence; the push body in copy.ts says "..., so the phone showed a pause card first."
-  knownBug("GM-COPY-002 F4 pause card: the push says \"Mom opened Chase 4 minutes after a call from an unknown number. A pause card was shown.\" [known bug copy differs from SPEC F4]", () => {
+  it("GM-COPY-002 F4 pause card: the push says \"Mom opened Chase 4 minutes after a call from an unknown number. A pause card was shown.\"", () => {
     expect(copy("PAUSE_SHOWN", "NOTICE", { app: "Chase", category: "BANK", duringCall: "false", minutesSinceCall: "4" }).body).toBe(
       "Mom opened Chase 4 minutes after a call from an unknown number. A pause card was shown.",
     );

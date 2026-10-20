@@ -80,7 +80,6 @@ class LongCallSafeWordTest {
      * riskyAppOpenedDuringCall, so with pause cards switched off a bank app opened during
      * a long unknown call leaves the long-call notice at NOTICE.
      */
-    @Tag("known-bug")
     @Test fun gm_call_003_urgentAfterBankAppEvenWithPauseCardsOff() {
         val phone = PhoneSim(DeviceConfig(protection = ProtectionSettings(pauseTripwires = PauseSettings(enabled = false))))
         phone.ring(UNKNOWN)

@@ -114,7 +114,8 @@ export function createDemoApi(options: { now?: number; latencyMs?: number } = {}
         configs: { ...state.configs, [k(f, d)]: { config: merged, updatedBy: { ...by, kind: 'helper' }, updatedAt: Date.now(), exists: true } },
         changes: { ...state.changes, [k(f, d)]: [change, ...(state.changes[k(f, d)] ?? [])] },
       });
-      return merged;
+      // The demo has no phone to ask, so everything applies at once.
+      return { config: merged, held: null };
     },
 
     async uploadPhoto(f, d, jpeg, caption, by) {

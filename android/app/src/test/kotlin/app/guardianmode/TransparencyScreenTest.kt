@@ -39,7 +39,6 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
-import org.junit.experimental.categories.Category
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -216,7 +215,6 @@ class TransparencyScreenTest {
     }
 
     /** S-06 (LocalStore.recordShared records every event; TransparencyScreen lists them unconditionally): with no family linked, nothing was received by anyone, so the screen mustn't say it was. */
-    @Category(KnownBug::class)
     @Test fun gm_tran_007_soloModeDoesNotClaimTheFamilyReceivedAlerts() {
         val solo = LocalState(config = DefaultConfig.config, onboardingDone = true, sharedEvents = Fixtures.state.sharedEvents)
         show(ui(solo))

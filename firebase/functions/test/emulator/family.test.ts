@@ -31,8 +31,6 @@ import { runCheckInSweep } from "../../src/triggers/checkInSweep.js";
 import { deliverEvent } from "../../src/triggers/onEventCreated.js";
 import { admin, closeAll, errorCode, errorReason, eventually, helperClient, phoneClient, type Client } from "./harness.js";
 
-const knownBug = it.skipIf(!process.env.INCLUDE_KNOWN_BUGS);
-
 let sarah: Client; // creates the family (owner)
 let phone: Client; // Mom's phone
 let familyId: string;
@@ -508,7 +506,7 @@ describe("helpers", () => {
 
   // docs/SECURITY.md §3 and §6: adding or removing a helper is announced to every helper.
   // approveHelper and removeHelper write no event and send no push today.
-  knownBug("GM-FAM-020 GM-FAM-022 Sarah is told when a helper is approved, declined or removed [known bug SEC-3 helper notice]", async () => {
+  it("GM-FAM-020 GM-FAM-022 Sarah is told when a helper is approved, declined or removed", async () => {
     const frank = await helperClient("Frank");
     const { code } = await sarah.call<{ code: string }>("createHelperInvite", { familyId });
     await frank.call("acceptHelperInvite", { code, displayName: "Frank" });

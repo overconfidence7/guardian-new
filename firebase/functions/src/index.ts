@@ -15,4 +15,5 @@ export { deleteFamily } from "./callables/deleteFamily.js";
 export { onEventCreated } from "./triggers/onEventCreated.js";
 export { onConfigWritten } from "./triggers/onConfigWritten.js";
 export { onPhotoCreated } from "./triggers/onPhotoCreated.js";
+export { onRequestAnswered } from "./triggers/onRequestAnswered.js";
 export { checkInSweep } from "./triggers/checkInSweep.js";

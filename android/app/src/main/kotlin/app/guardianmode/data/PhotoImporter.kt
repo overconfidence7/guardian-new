@@ -20,13 +20,13 @@ import kotlin.math.roundToInt
 class PhotoImporter(private val context: Context, private val store: LocalStore, private val clock: () -> Long = System::currentTimeMillis) {
     private val dir get() = File(context.filesDir, "photos").apply { mkdirs() }
 
-    /** Returns how many pictures were added. */
+    /** Returns how many pictures were added. When the cap is reached the oldest pictures go first. */
     suspend fun import(uris: List<Uri>): Int = withContext(Dispatchers.IO) {
         val added = uris.take(LocalState.MAX_LOCAL_PHOTOS).mapIndexedNotNull { i, uri ->
             runCatching { copy(uri, clock() + i) }.onFailure { Log.w(TAG, "Couldn't add a photo", it) }.getOrNull()
         }
         if (added.isEmpty()) return@withContext 0
-        val updated = store.update { s -> s.copy(localPhotos = (added + s.localPhotos).take(LocalState.MAX_LOCAL_PHOTOS)) }
+        val updated = store.update { s -> s.copy(localPhotos = (added + s.localPhotos).sortedByDescending { it.createdAt }.take(LocalState.MAX_LOCAL_PHOTOS)) }
         cleanUp(updated.localPhotos)
         added.size
     }
