@@ -1,8 +1,10 @@
 # Kickoff prompt
 
-Paste everything inside the block into a new Antigravity agent conversation, with the guardian-new repo open from `C:\Users\nkurt\AndroidStudioProjects\guardian-new`.
+Paste everything inside the block into a new Antigravity agent conversation. The first paragraph tells Antigravity where the repo is, so it works whether or not you already have the folder open as the workspace.
 
 ```text
+The repo is github.com/overconfidence7/guardian-new, and my local copy should be at C:\Users\nkurt\AndroidStudioProjects\guardian-new. If that folder isn't there, clone it there. Then check out main and pull, so you have the latest code and the qa/antigravity/ folder. Work from that folder for everything below.
+
 I need a full test pass on Guardian Mode, the Android app in this repo. It's a simple home screen for an older parent's phone that also slows down scams: pause cards when a bank or payment app opens during or right after a call from an unknown number, a warning when a remote-control app like AnyDesk shows up, quiet unknown callers, a safe word reminder, lock levels with a code, and a screen that shows the parent exactly what their family can see.
 
 Everything you need is in qa/antigravity/. Start with README.md, then read RUNBOOK.md all the way through before you run anything. RUNBOOK.md has the rules, how to set up the emulators and builds, an adb cheat sheet, and how to write up results. Also read docs/SPEC.md, docs/POLICY.md and docs/SECURITY.md, since those decide what "correct" means when a case and the app disagree.
