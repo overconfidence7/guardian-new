@@ -51,6 +51,7 @@ The Guided and Locked levels put Guardian's own exits (and, at Locked, other app
 | Full-screen notifications | `USE_FULL_SCREEN_INTENT` | Not granted by default for non-calling/alarm apps on Android 14+. Requested at setup via `ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT`; Play Console declaration; must degrade gracefully. |
 | Medication reminders on time | `SCHEDULE_EXACT_ALARM` with `canScheduleExactAlarms()` check, fallback to inexact windowed alarms | `USE_EXACT_ALARM` is only for alarm/timer/calendar apps, so we do not use it. |
 | Detect new installs | Runtime-registered `PACKAGE_ADDED` receiver in the running service, plus `getChangedPackages(sequence)` on unlock and every 15 min | `PACKAGE_ADDED` is not exempt from implicit-broadcast limits, so no manifest receiver. |
+| "Remove" on the remote-access warning | `REQUEST_DELETE_PACKAGES` and `ACTION_DELETE`, so Android shows its own uninstall prompt and the parent confirms | Normal permission, no declaration. Without it Android closes the prompt at once. Guardian never uninstalls anything silently. |
 | Help-me screenshot | `MediaProjection`, consent dialog every time | Matches "approve each time". FGS type `mediaProjection` only while capturing. |
 | Push | Firebase Cloud Messaging | Standard. |
 
