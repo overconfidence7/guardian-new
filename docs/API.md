@@ -56,7 +56,21 @@ families/{familyId}/devices/{deviceId}/photos/{photoId}
   storagePath, fromUid, fromName, caption (≤ 200 chars), createdAt
 
 families/{familyId}/devices/{deviceId}/changes/{changeId}
-  byUid, byName, summary, at         # written by onConfigWritten, shown on the phone
+  byUid, byName, summary, at         # written by onConfigWritten, approveHelper, removeHelper
+                                     # and onRequestAnswered; shown on the phone
+
+families/{familyId}/devices/{deviceId}/requests/{requestId}   # risky changes waiting for the parent (SECURITY.md §3)
+  byUid, byName: string              # the helper asking
+  changes: {                         # only the keys being asked for, each the value wanted
+    family?: FamilyContact[]         #   the whole new family list (numbers, primary helper, who's on it)
+    trustedPackages?: string[]       #   the whole new protection.remoteAccessAlarm.trustedPackages
+    pauseTripwiresEnabled?: bool     #   protection.pauseTripwires.enabled
+    remoteAccessAlarmEnabled?: bool  #   protection.remoteAccessAlarm.enabled
+    longCallAlertEnabled?: bool      #   protection.longCallAlert.enabled
+    remoteUnlockUntil?: int          #   lock.remoteUnlockUntil, epoch ms, at most 24 h ahead
+  }
+  status: "pending" | "approved" | "declined"
+  createdAt: timestamp, decidedAt: timestamp (set by the phone)
 
 invites/{code}                        # top-level so a code can be looked up without knowing the family
   familyId, deviceId | null, kind: "device" | "helper", createdBy, createdByName, expiresAt, usedBy | null
@@ -64,8 +78,9 @@ invites/{code}                        # top-level so a code can be looked up wit
 
 ### Rules summary
 
-- Helpers (uid in `families/{f}.memberUids`): read the family, members, devices, config, events, photos, changes; write config, photos; update their own member doc; update device `parentName`.
-- Phone (`request.auth.uid == devices/{d}.deviceUid`): read its device, config, photos, changes, member names; update its device doc fields `fcmToken, model, androidVersion, appVersion, status, installedApps, consent`; write config (the parent owns the phone and may switch features off); create events with a valid `type`/`severity`, `source == "device"`, bounded `data`.
+- Helpers (uid in `families/{f}.memberUids`): read the family, members, devices, config, events, photos, changes, requests; write config, photos; update their own member doc; update device `parentName`.
+- Helpers can't change these config fields directly once a phone is paired (SECURITY.md §3): the family list's ids, numbers, order or primary helper; adding to `protection.remoteAccessAlarm.trustedPackages`; turning `protection.pauseTripwires.enabled`, `protection.remoteAccessAlarm.enabled` or `protection.longCallAlert.enabled` from on to off; raising `lock.remoteUnlockUntil`. Making things safer (turning protection on, untrusting an app) is direct, and before a phone is paired there's no parent to ask, so everything is. The dashboard saves the rest of an edit at once and puts these fields in a `requests/` doc (`status: "pending"`, `byUid` = the caller, known `changes` keys only); the helper who asked may delete it while pending.
+- Phone (`request.auth.uid == devices/{d}.deviceUid`): read its device, config, photos, changes, requests, member names; update its device doc fields `fcmToken, model, androidVersion, appVersion, status, installedApps, consent`; write config (the parent owns the phone and may switch features off, and applies allowed requests this way); answer a pending request by setting only `status` (`approved` or `declined`) and `decidedAt`; create events with a valid `type`/`severity`, `source == "device"`, and only the data keys documented for that type (see "Event data keys").
 - Invites: no client access; only through functions.
 - Everything else denied.
 
@@ -107,6 +122,12 @@ Notes on the implemented contract:
 - `checkInSweep` (every 15 min): for each device with `checkIn.enabled`, if parent-local time is past the deadline, `lastHeartbeatAt` is before parent-local midnight, and `checkInNotifiedFor` isn't today: create `CHECK_IN_MISSED` (NOTICE). If `lastHeartbeatAt` is older than 24 h and `silentNotifiedAt` is older than that: create `CHECK_IN_MISSED` with `data.reason = "silent"` (URGENT).
 
 - `onPhotoCreated` (photos): sends `{ type: "photo" }` to the phone.
+- `onRequestAnswered` (requests, update): when a request goes from `pending` to `approved` or `declined`, creates `CHANGE_REQUEST_ANSWERED` (`req_{requestId}`, URGENT if approved, else NOTICE) so every helper hears either way, and for an approved one a `changes` entry for the phone.
+
+Family notices (SECURITY.md §3 and §6), server-only event types the phone never sends or reads:
+- `approveHelper` creates `HELPER_CHANGED` with `change: "added"` (URGENT) or `"declined"` (NOTICE) and, for an added helper, a "Became one of your helpers" line in every phone's `changes`.
+- `removeHelper` creates `HELPER_CHANGED` with `change: "removed"` (`by` = the owner's name when it wasn't the phone) or `"left"`, plus an "Is no longer one of your helpers" line on the phone. The phone saying no to a pending helper is `"declined"`; a withdrawn invite is quiet.
+- `deleteDevice` pushes a "phone left the family" notice straight to the helpers (the phone's own events are deleted with it).
 
 ## Event data keys
 
@@ -115,12 +136,18 @@ Values are strings. Never a phone number, message or screen content.
 | Type | Keys |
 |---|---|
 | `LONG_UNKNOWN_CALL` | `minutes`, `ongoing` |
-| `PAUSE_*`, `REMOTE_ACCESS_*`, `CONTROL_APP_INSTALLED` | as emitted by `TripwireEngine.kt` (app label and category) |
-| `HELP_REQUESTED` | `note` |
+| `PAUSE_SHOWN` | `app`, `category`, `duringCall`, `minutesSinceCall` |
+| `PAUSE_CALLED_FAMILY`, `PAUSE_CONTINUED` | `app`, `category` |
+| `REMOTE_ACCESS_INSTALLED`, `REMOTE_ACCESS_OPENED`, `CONTROL_APP_INSTALLED` | `app`, `category`, `afterUnknownCall` |
+| `HELP_REQUESTED` | `note`, `path` (the screenshot's Storage path) |
 | `REMINDER_MISSED` | `title`, `time` |
 | `PROTECTION_CHANGED_BY_PARENT` | `feature` (a `Transparency.kt` key, `safeWord` or `all`), `enabled` |
 | `PERMISSION_MISSING` | `permission` (`usageAccess`, `overlay`, `callScreening`, `phoneState`, `notifications`, `exactAlarms`, `fullScreenIntent`, `battery`, `homeApp`, `contacts`) |
 | `CHECK_IN_MISSED` | `deadline`, `date`, or `reason: "silent"`; server-created only |
+| `HELPER_CHANGED` | `change` (`added`, `declined`, `removed`, `left`), `name`, `by`; server-created only |
+| `CHANGE_REQUEST_ANSWERED` | `byName`, `approved` (`"true"`/`"false"`), `what` (plain words); server-created only |
+
+`firestore.rules` (`eventDataKeys`) refuses any other key on an event the phone writes.
 
 ## FCM messages to the phone
 
