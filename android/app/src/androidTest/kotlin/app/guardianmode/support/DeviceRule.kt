@@ -188,6 +188,28 @@ class DeviceRule(
             "cmd role add-role-holder android.app.role.CALL_SCREENING $pkg",
             "dumpsys deviceidle whitelist +$pkg",
         ).forEach { shell(it) }
+        ensureHomeResolves()
+    }
+
+    /** What Home opens right now: a component, or the system's chooser when no home app is set. */
+    fun homeResolvesTo(): String =
+        shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
+            .trim().lines().lastOrNull()?.trim().orEmpty()
+
+    /**
+     * Holding the Home role is what makes Home open Guardian. A test that takes the role away
+     * (gm_lock_041) or hands it to another launcher (gm_home_015) is followed by one that adds
+     * it back, and on API 33 that can leave the role held but no preferred home set: every Home
+     * press then shows Android's chooser and Guardian comes back only by itself 5 s later (the
+     * API 33 run of f42747b: GM-PERF-002 took 5026-5044 ms on all ten presses, the chooser,
+     * package "android", resumed between them). So this waits until Home resolves to Guardian
+     * and sets the home activity directly if the role alone didn't.
+     */
+    private fun ensureHomeResolves() {
+        if (waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) return
+        Log.w(TAG, "Home resolves to ${homeResolvesTo()} after adding the Home role; setting Guardian's home activity")
+        shell("cmd package set-home-activity $pkg/app.guardianmode.ui.MainActivity")
+        if (!waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) Log.w(TAG, "Home still resolves to ${homeResolvesTo()}")
     }
 
     /**
