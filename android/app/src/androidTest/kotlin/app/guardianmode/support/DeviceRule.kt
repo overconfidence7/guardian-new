@@ -642,13 +642,19 @@ class DeviceRule(
         hideKeyboard()
         if (has(selector)) return true
         // Down to the end of the page, then back up to the top.
+        var moves = 0
         for (direction in listOf(Direction.DOWN, Direction.UP)) {
             repeat(25) {
                 val moved = scrollOnce(direction)
+                if (moved) moves++
                 if (has(selector)) return true
                 if (!moved) return@repeat
             }
         }
+        // Says which it was: nothing of Guardian's that scrolls (another window on top, the page not
+        // drawn yet) or a page scrolled end to end without it (gm_racc_014 on API 33, 589a1b6).
+        val scrollable = runCatching { device.hasObject(By.pkg(pkg).scrollable(true)) }.getOrDefault(false)
+        Log.w(TAG, "not seen after $moves scroll moves: $selector (top=${topPackage()}, Guardian scrollable on screen=$scrollable)")
         return false
     }
 
@@ -901,7 +907,7 @@ class DeviceRule(
         /** Logcat tag of the one-line failure diagnostics CI reports. */
         const val DIAG = "GuardianDiag"
         const val TRACE = "GuardianTrace"
-        private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime")
+        private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime", TAG)
         const val CALL_OUTGOING = 2
         const val TIMEOUT = 8_000L
         /** How long to watch for something that must not appear. */
