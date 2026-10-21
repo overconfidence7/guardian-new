@@ -75,6 +75,14 @@ class LockPolicyTest {
     }
 
     @Test
+    fun removeOnAWarningLetsOnlyTheUninstallScreenThrough() {
+        val installer = "com.google.android.packageinstaller"
+        assertTrue(LockPolicy.blocks(installer, locked, allowed, unlocked = false))
+        assertFalse(LockPolicy.blocks(installer, locked, allowed, unlocked = false, uninstallPass = true))
+        assertTrue(LockPolicy.blocks("com.android.settings", locked, allowed, unlocked = false, uninstallPass = true))
+    }
+
+    @Test
     fun wrongTriesWaitLongerAndLonger() {
         assertEquals(0, LockCode.waitAfter(4))
         assertEquals(30_000, LockCode.waitAfter(5))

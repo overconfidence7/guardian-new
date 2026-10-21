@@ -14,6 +14,15 @@ object LockPolicy {
     /** How long a correct code keeps everything open. */
     const val UNLOCK_MILLIS = 10 * 60_000L
 
+    /**
+     * How long Android's uninstall screen stays uncovered after "Remove" on a remote-access
+     * warning, so the parent can confirm without the code. Anything else there still needs it.
+     */
+    const val UNINSTALL_PASS_MILLIS = 30_000L
+
+    /** Android's install and uninstall screens. */
+    val PACKAGE_INSTALLERS: Set<String> = setOf("com.android.packageinstaller", "com.google.android.packageinstaller")
+
     /** System screens that must always work, whatever the level. */
     val ALWAYS_ALLOWED: Set<String> = setOf(
         "android",
@@ -51,9 +60,17 @@ object LockPolicy {
      * [allowed] is every package the family put on the phone (tiles, allowed apps,
      * the phone's own dialer, messages and camera) plus Guardian itself.
      */
-    fun blocks(packageName: String, settings: LockSettings, allowed: Set<String>, unlocked: Boolean, className: String = ""): Boolean =
+    fun blocks(
+        packageName: String,
+        settings: LockSettings,
+        allowed: Set<String>,
+        unlocked: Boolean,
+        className: String = "",
+        uninstallPass: Boolean = false,
+    ): Boolean =
         settings.level == LockLevel.LOCKED && !unlocked &&
-            packageName !in allowed && packageName !in ALWAYS_ALLOWED && !isPermissionPrompt(packageName, className)
+            packageName !in allowed && packageName !in ALWAYS_ALLOWED && !isPermissionPrompt(packageName, className) &&
+            !(uninstallPass && packageName in PACKAGE_INSTALLERS)
 
     private fun isPermissionPrompt(packageName: String, className: String): Boolean =
         // A screen we can't name is let through rather than risk covering a prompt the parent needs.
