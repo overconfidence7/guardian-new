@@ -679,33 +679,12 @@ class DeviceRule(
      */
     private fun scrollOnce(direction: Direction): Boolean {
         val scrollable = runCatching { device.findObject(By.pkg(pkg).scrollable(true)) }.getOrNull() ?: return false
-        val before = guardianScreen()
         val more = runCatching { scrollable.scroll(direction, 0.6f) }
             .onFailure { Log.w(TAG, "scroll $direction threw $it") }
             .getOrDefault(false)
         device.waitForIdle(500)
-        if (more || guardianScreen() != before) return true
-        // UiObject2.scroll reports "can't scroll" when its swipe goes stale or the scrolled event
-        // doesn't arrive in time, and then the page hasn't moved at all ("not seen after 0 scroll
-        // moves" with a scrolling page on screen: gm_tran_004 and gm_racc_014 on API 33). Ask the
-        // page to scroll itself through accessibility instead, as TalkBack would.
-        val asked = accessibilityScroll(direction)
-        device.waitForIdle(500)
-        return asked && guardianScreen() != before
+        return more
     }
-
-    /** What Guardian's own windows show, to tell whether a scroll moved anything. */
-    private fun guardianScreen(): String {
-        val mine = pkg.substringAfterLast('.') + ":"
-        return runCatching { screenSummary().split(" | ").filter { it.startsWith(mine) }.joinToString("|") }.getOrDefault("")
-    }
-
-    private fun accessibilityScroll(direction: Direction): Boolean = runCatching {
-        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return@runCatching false
-        val node = findNode(root) { it.isScrollable && it.packageName?.toString() == pkg } ?: return@runCatching false
-        val action = if (direction == Direction.UP) AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD else AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-        node.performAction(action)
-    }.getOrDefault(false)
 
     /**
      * Whether the switch described as [desc] shows on, read from the accessibility tree:
