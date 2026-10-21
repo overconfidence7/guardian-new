@@ -26,3 +26,4 @@ ui-debug.log*
 
 # OS
 .DS_Store
+__pycache__/

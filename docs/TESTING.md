@@ -9,7 +9,7 @@ Everything runs in the cloud on GitHub Actions. Nothing requires a local machine
 | Rules core | `core/src/test` | Call correlation, screening, tripwires, long-call, safe word, reminders, transparency: every product rule, deterministic and time-injected | `cd core && ./gradlew test` |
 | Android unit + Robolectric | `android/app/src/test` | Home model, feature toggles, card mapping, code parsing | `cd android && ./gradlew testDebugUnitTest` |
 | Screenshot (Roborazzi) | `android/app/src/test/.../ScreenshotTest.kt` | Every parent-facing screen at default, 2x text, dark and high contrast, on a 360 dp phone | `./gradlew verifyRoborazziDebug` (record with `recordRoborazziDebug` or the "Record screenshot baselines" workflow) |
-| Instrumented | `android/app/src/androidTest` | The scam story end to end on a real Android build: unknown call → bank app → pause card; family call never arms; remote-access install warning; home tiles | `./gradlew connectedDebugAndroidTest` |
+| Instrumented | `android/app/src/androidTest` | The app on an emulator with stand-in apps under real package names: real calls through the emulator console, pause cards, lock covers, install alarms, screening, reminders, the notification | `./gradlew connectedDebugAndroidTest` |
 | Lint | Android lint | API misuse, accessibility, manifest problems | `./gradlew lintDebug` |
 | Backend | `firebase/functions` | Callables, triggers, check-in sweep across time zones, notification copy; Firestore and Storage rules allow/deny for every role | `npm run test:unit`, `npm run test:emulator` |
 | Dashboard | `web` | Components, model contract against `shared/fixtures`, event wording; Playwright e2e against the emulator suite | `npm test`, `npm run e2e` |
@@ -20,7 +20,8 @@ Everything runs in the cloud on GitHub Actions. Nothing requires a local machine
 |---|---|---|
 | Every push and PR | `ci.yml` | core, Android build + unit + screenshots + lint, web, backend |
 | Every PR touching Android, every push to `main` | `android-emulator.yml` | Instrumented tests on an API 36 emulator |
-| Nightly 03:00 UTC | `nightly.yml` | Emulator matrix API 29, 33, 36, 37; Playwright e2e; dependency audit |
+| Daily 08:17 UTC | `nightly.yml` ("Daily tests") | Everything above plus tests for known bugs, the on-device suite with stand-in apps on API 29, 33 and 36, host checks (reboot, reinstall, process death, Doze), Playwright e2e, dependency audit, and one report. See `qa/daily/README.md` |
+| Daily, after the run | Claude scheduled task | Reads the report, fixes or reports new failures, and automates more cases when all is green |
 | Weekly and before release | Firebase Test Lab (set up once the Firebase project exists) | Physical Samsung Galaxy A and Pixel: Robo crawl + instrumented smoke suite |
 | Release candidate | all of the above + `docs/RELEASE.md` checklist on two real phones | |
 
