@@ -9,12 +9,14 @@ import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import app.guardianmode.core.PhoneCallState
+import app.guardianmode.support.DeviceRule
 import app.guardianmode.support.GuardianReset
 import app.guardianmode.ui.MainActivity
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -24,6 +26,9 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class ProtectionFlowTest {
+    /** Wakes the screen, grants, resets and, on failure, reports what was on screen like every device test. */
+    @get:Rule val rule = DeviceRule()
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)
     private val context = instrumentation.targetContext
