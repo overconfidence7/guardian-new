@@ -863,8 +863,10 @@ class DeviceRule(
             val raw = runCatching { callLogQuery("type:date") }.getOrElse { "?$it" }
             append("callLogRaw=${raw.lines().size} lines: ${raw.trim().takeLast(160).replace("\n", " / ")} ")
         }
+        // By the line's own tag ("W/DeviceRule( 123): ..."), not words in it: stack traces other
+        // tags print mention DeviceRule on every line.
         val log = ownLogcat().lines().filter { line ->
-            DIAG_TAGS.any { "$it" in line } && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
+            line.drop(2).substringBefore('(').trim() in DIAG_TAGS && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
         }.takeLast(8)
         append("log=$log ")
         append("screen=${runCatching { screenSummary().take(1_500) }.getOrDefault("?")}")
