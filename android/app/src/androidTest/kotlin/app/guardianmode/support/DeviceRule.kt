@@ -82,6 +82,7 @@ class DeviceRule(
         resetState(initialState())
         GuardianReset.brain(container)
         GuardianService.start(context)
+        syncProtectionNotification()
         device.pressHome()
         device.waitForIdle()
     }
@@ -103,6 +104,26 @@ class DeviceRule(
         wake()
         repeat(2) { device.pressBack() }
         device.pressHome()
+    }
+
+    /**
+     * Starts each test with the persistent notification matching the saved state, as a fresh
+     * start of Guardian would post it (GuardianService.onCreate). A test that pauses and resumes
+     * quickly can leave it saying the opposite of the state (known bug NOTIF-STALE:
+     * ProtectionController posts from LocalStore.current, which can still hold the state from
+     * before its own write); without this, the next test that reads the notification fails for
+     * a bug it isn't about (gm_svc_001 after gm_svc_005 on PR #10's API 36 run).
+     */
+    private fun syncProtectionNotification() {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!state.onboardingDone || protectionNotification() == null) return
+        val paused = state.isPaused(System.currentTimeMillis())
+        val want = if (paused) "Guardian Mode is paused" else "Guardian Mode is on"
+        val title = { protectionNotification()?.notification?.extras?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString() }
+        if (waitUntil(2_000) { title() == want }) return
+        Log.w(TAG, "protection notification says \"${title()}\" but the saved state is ${if (paused) "paused" else "on"}; posting it again from the state")
+        nm.notify(Notifications.ID_PROTECTION, Notifications.protection(context, paused))
+        waitUntil(2_000) { title() == want }
     }
 
     // ---- State ----
@@ -315,14 +336,13 @@ class DeviceRule(
 
     /**
      * Answers the ringing call. The console's `gsm accept` makes the modem's call active, and
-     * on Android 13+ Telecom follows; on Android 10 Telecom keeps ringing (the heads-up still
-     * offers Answer, no OFFHOOK is broadcast) although the registry already says off-hook. So
-     * Telecom itself is checked, and asked to answer (as adb's shell could) while it still rings.
+     * on Android 13+ Telecom follows. Android 10 is answered differently: see [answerOnQ].
      */
     fun answer(number: String) {
-        // Android 10: answer through Telecom first, so Telecom (and the PHONE_STATE broadcasts
-        // Guardian listens to) moves to off-hook, and the modem follows through the RIL.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) telecomAccept()
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            answerOnQ(number)
+            return
+        }
         runCatching { EmulatorConsole.accept(number) }
         waitForCallState(2, timeoutMs = 3_000)
         if (!waitUntil(1_500) { !incomingCallShown() }) {
@@ -334,6 +354,52 @@ class DeviceRule(
         if (callState() != 2) shell("input keyevent KEYCODE_CALL")
         trace("answer ${number.takeLast(4)}: incomingShown=${incomingCallShown()}")
     }
+
+    /**
+     * Android 10. [ring] returns as soon as the modem rings (the registry says RINGING), while
+     * Telecom is still asking Guardian's call screener about the call. A `gsm accept` then makes
+     * the modem's call active underneath a Telecom call that hasn't started ringing yet, and on
+     * Android 10 Telecom never catches up: the heads-up keeps offering Answer, Guardian never
+     * gets OFFHOOK (its tracker stays at RINGING, so the call never counts as answered and no
+     * card follows), and answering through Telecom afterwards fails because the modem has no
+     * ringing call left. Every API 29 trace on 64f203e showed exactly that: registry 2, modem
+     * "active", heads-up still up, tracker RINGING. (The host checks wait 2 s before
+     * `gsm accept` and pass.) The shell's ANSWER_PHONE_CALLS can't be borrowed on Android 10
+     * either ("Neither user ... nor current process has ANSWER_PHONE_CALLS").
+     *
+     * So the call is answered the way a person does: wait until Telecom rings it, then the CALL
+     * key (PhoneWindowManager answers Telecom's ringing call), then the heads-up's Answer
+     * button; Telecom tells the modem. The console is only the last resort.
+     */
+    private fun answerOnQ(number: String) {
+        val ringing = waitUntil(8_000) { telecomCallState() == 1 || incomingCallShown() }
+        if (!ringing) Log.w(TAG, "Telecom never showed the call from ${number.takeLast(4)} ringing; answering anyway")
+        val answered = { telecomCallState() == 2 && !incomingCallShown() }
+        shell("input keyevent KEYCODE_CALL")
+        if (!waitUntil(4_000, answered)) {
+            Log.w(TAG, "CALL key didn't answer; tapping the heads-up's Answer")
+            val button = device.findObject(By.pkg("com.android.systemui").desc("Answer"))
+                ?: device.findObject(By.pkg("com.android.systemui").text(Pattern.compile("Answer", Pattern.CASE_INSENSITIVE)))
+            button?.click()
+            if (!waitUntil(4_000, answered)) {
+                Log.w(TAG, "Answer button didn't answer either; accepting through the console")
+                runCatching { EmulatorConsole.accept(number) }
+                waitUntil(3_000, answered)
+            }
+        }
+        waitForCallState(2, timeoutMs = 3_000)
+        trace("answer ${number.takeLast(4)} (Android 10): telecom=${telecomCallState()} incomingShown=${incomingCallShown()} gsm=${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}")
+    }
+
+    /**
+     * The call state as Guardian's own process gets it from TelephonyManager: 0 idle, 1 ringing,
+     * 2 off-hook, -1 unreadable. On Android 10 this is Telecom's view (the one the PHONE_STATE
+     * broadcasts follow), which can differ from the registry's [callState].
+     */
+    fun telecomCallState(): Int = runCatching {
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.telephony.TelephonyManager::class.java).callState
+    }.getOrDefault(-1)
 
     /** Telecom's acceptRingingCall with the shell's ANSWER_PHONE_CALLS, as adb could. */
     private fun telecomAccept() {
@@ -440,11 +506,24 @@ class DeviceRule(
      */
     fun callLog(sinceMs: Long): List<Pair<String, Int>> =
         Regex("number=([^,]*), type=(\\d+), date=(\\d+)")
-            .findAll(shell("content query --uri content://call_log/calls --projection number:type:date"))
+            .findAll(callLogQuery("number:type:date"))
             .filter { it.groupValues[3].toLong() >= sinceMs - 2_000 }
             .sortedByDescending { it.groupValues[3].toLong() }
             .map { it.groupValues[1] to it.groupValues[2].toInt() }
             .toList()
+
+    /**
+     * The shell's `content query` of the call log. Its errors go to stderr, which a test can't
+     * read, so an answer that is neither rows nor "No result found." means the shell couldn't
+     * read the call log at all (on the API 29 run of 64f203e it printed nothing, every time;
+     * run-device-suite.sh prints the shell's own error before the tests). That is logged
+     * instead of silently reading as an empty call log.
+     */
+    fun callLogQuery(projection: String): String {
+        val out = shell("content query --uri content://call_log/calls --projection $projection")
+        if ("Row:" !in out && "No result" !in out) Log.w(TAG, "the shell couldn't read the call log: \"${out.trim().take(200)}\"")
+        return out
+    }
 
     /** Outgoing calls to [number] (any formatting) logged since [sinceMs]. */
     fun dialedCount(number: String, sinceMs: Long): Int {
@@ -748,7 +827,7 @@ class DeviceRule(
     /** What the test and Guardian see right now, on one line, for failure reports. */
     fun diagnostics(): String = buildString {
         val now = System.currentTimeMillis()
-        append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} ")
+        append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} telecom=${telecomCallState()} ")
         append("screenOn=${isScreenOn()} keyboard=${keyboardShown()} ")
         append("gsm=[${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}] ")
         append("brain{${runCatching { GuardianReset.describe(container) }.getOrElse { "?$it" }}} ")
@@ -759,7 +838,7 @@ class DeviceRule(
         append("calls=${calls.map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
         if (calls.isEmpty()) {
             // Tells "nothing logged" apart from "the provider wouldn't answer the shell".
-            val raw = runCatching { shell("content query --uri content://call_log/calls --projection type:date") }.getOrElse { "?$it" }
+            val raw = runCatching { callLogQuery("type:date") }.getOrElse { "?$it" }
             append("callLogRaw=${raw.lines().size} lines: ${raw.trim().takeLast(160).replace("\n", " / ")} ")
         }
         val log = ownLogcat().lines().filter { line ->
