@@ -87,6 +87,17 @@ def wake() -> None:
     print("  wake: the lock screen is still showing after 10 tries")
 
 
+def home_holders() -> str:
+    """Who holds the home role. Android 10's `cmd role` has no get-role-holders, so there the
+    phone's resolved home activity (what the Home button opens) is reported instead."""
+    out = sh("cmd role get-role-holders android.app.role.HOME").strip()
+    if "Unknown command" not in out:
+        return out
+    resolved = sh("cmd package resolve-activity -c android.intent.category.HOME -a android.intent.action.MAIN")
+    m = re.search(r"packageName=(\S+)", resolved)
+    return m.group(1) if m else f"? ({resolved.strip()[:120]})"
+
+
 def top_activity() -> str:
     """The resumed activity's component, as the activity manager reports it."""
     out = sh("dumpsys activity activities")
@@ -103,7 +114,7 @@ def diagnosis() -> str:
     return (
         f"top={top_activity()} keyguard={keyguard_showing()} service={service_running()} "
         f"lastUnknownCallEnded={ended_txt} paused={state.get('pausedUntil', 0) > now_ms} "
-        f"home={sh('cmd role get-role-holders android.app.role.HOME').strip()!r}"
+        f"home={home_holders()!r}"
     )
 
 
@@ -354,7 +365,7 @@ def survives_update(apk: str, **_) -> None:
     check(wait_for(service_running, 30) is not None, "service never started")
     time.sleep(5)  # let the app finish writing its first-run defaults
     before = read_state()
-    home_before = sh("cmd role get-role-holders android.app.role.HOME").strip()
+    home_before = home_holders()
     adb("install", "-r", apk, timeout=300)
     took = wait_for(service_running, 60)
     check(took is not None, "service didn't come back after the update (MY_PACKAGE_REPLACED)")
@@ -364,10 +375,8 @@ def survives_update(apk: str, **_) -> None:
     check(not lost, f"settings lost across the update: {lost}")
     check(before.get("config") == after.get("config"), "the helper's settings changed across the update")
     # The role controller re-checks roles after a package changes, on its own time: give it a moment.
-    kept = wait_for(lambda: PKG in sh("cmd role get-role-holders android.app.role.HOME"), 30)
-    check(kept is not None, f"Guardian lost the home role after the update (home holders before: {home_before!r}; "
-                            f"30 s after: {sh('cmd role get-role-holders android.app.role.HOME').strip()!r}; "
-                            f"preferred home: {sh('cmd package resolve-activity -c android.intent.category.HOME -a android.intent.action.MAIN').strip()[:200]!r})")
+    kept = wait_for(lambda: PKG in home_holders(), 30)
+    check(kept is not None, f"Guardian lost the home role after the update (home before: {home_before!r}; 30 s after: {home_holders()!r})")
 
 
 def force_stop_then_home(apk: str, **_) -> None:

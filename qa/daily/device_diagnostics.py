@@ -14,7 +14,8 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-MAX_NOTICES = 9
+# A step shows at most 10 notices, and the suite script may already have used two.
+MAX_NOTICES = 7
 # GitHub keeps the first 4096 characters of an annotation; escaping adds a few.
 MAX_CHARS = 3900
 

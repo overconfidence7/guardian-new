@@ -25,18 +25,15 @@ for apk in "$STUBS"/*/debug/*.apk; do
   esac
 done
 
-# Tests read the call log through the shell's `content query` (DeviceRule.callLog). On the API 29
-# run of 64f203e it printed nothing, every time (no rows, no "No result found."): the shell's
-# error goes to stderr, which a test can't see, so it's shown here, and the shell is given
-# READ_CALL_LOG (a hard-restricted permission on Android 10) if it can't read the log.
-calllog_probe() { adb shell content query --uri content://call_log/calls --projection type 2>&1 | head -3 | tr '\n' ' '; }
+# Tests read the call log through the shell's `content query` (DeviceRule.callLogQuery). Android
+# 10's shell doesn't request READ_CALL_LOG, so there DeviceRule reads it as root (su). The
+# shell's errors go to stderr, which a test can't see, so they're shown here.
+calllog_probe() { adb shell "$@" content query --uri content://call_log/calls --projection type 2>&1 | head -3 | tr '\n' ' '; }
 probe="$(calllog_probe)"
 case "$probe" in
   *Row:*|*"No result"*) ;;
   *)
-    echo "::notice title=$(basename "$OUT") call log::the shell can't read the call log: ${probe:-<nothing>}"
-    grant="$(adb shell pm grant com.android.shell android.permission.READ_CALL_LOG 2>&1; adb shell appops set com.android.shell READ_CALL_LOG allow 2>&1)"
-    echo "::notice title=$(basename "$OUT") call log::granted the shell READ_CALL_LOG (${grant:-ok}); now: $(calllog_probe)"
+    echo "::notice title=$(basename "$OUT") call log::the shell can't read the call log: ${probe:-<nothing>}; as root: $(calllog_probe su 0)"
     ;;
 esac
 

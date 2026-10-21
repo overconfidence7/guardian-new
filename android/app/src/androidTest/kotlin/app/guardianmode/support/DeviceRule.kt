@@ -388,8 +388,16 @@ class DeviceRule(
             }
         }
         waitForCallState(2, timeoutMs = 3_000)
-        trace("answer ${number.takeLast(4)} (Android 10): telecom=${telecomCallState()} incomingShown=${incomingCallShown()} gsm=${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}")
+        trace("answer ${number.takeLast(4)} (Android 10): telecom=${telecomCallState()} incomingShown=${incomingCallShown()} gsm=${gsmList()}")
     }
+
+    /**
+     * The modem's calls on one line, numbers cut to their last 4 digits: this goes to Guardian's
+     * own logcat, which gm_priv_004 searches for the caller's number.
+     */
+    fun gsmList(): String = runCatching {
+        EmulatorConsole.list().trim().replace("\n", "; ").replace(Regex("\\+?\\d{6,}")) { "…" + it.value.takeLast(4) }
+    }.getOrDefault("?")
 
     /**
      * The call state as Guardian's own process gets it from TelephonyManager: 0 idle, 1 ringing,
@@ -515,13 +523,21 @@ class DeviceRule(
     /**
      * The shell's `content query` of the call log. Its errors go to stderr, which a test can't
      * read, so an answer that is neither rows nor "No result found." means the shell couldn't
-     * read the call log at all (on the API 29 run of 64f203e it printed nothing, every time;
-     * run-device-suite.sh prints the shell's own error before the tests). That is logged
-     * instead of silently reading as an empty call log.
+     * read the call log at all (on API 29: "Permission Denial ... requires READ_CALL_LOG", which
+     * run-device-suite.sh prints before the tests); it is then read as root, and if that fails
+     * too it is logged instead of silently reading as an empty call log.
      */
     fun callLogQuery(projection: String): String {
-        val out = shell("content query --uri content://call_log/calls --projection $projection")
-        if ("Row:" !in out && "No result" !in out) Log.w(TAG, "the shell couldn't read the call log: \"${out.trim().take(200)}\"")
+        val query = "content query --uri content://call_log/calls --projection $projection"
+        val readable = { out: String -> "Row:" in out || "No result" in out }
+        val out = shell(query)
+        if (readable(out)) return out
+        // Android 10's shell doesn't request READ_CALL_LOG at all ("Package com.android.shell has
+        // not requested permission"), so it can't be granted one; root can read it, as `adb root`
+        // could (the emulator images let the shell run su).
+        val asRoot = shell("su 0 $query")
+        if (readable(asRoot)) return asRoot
+        Log.w(TAG, "the call log can't be read, as the shell or as root: \"${(out + asRoot).trim().take(200)}\"")
         return out
     }
 
@@ -541,7 +557,7 @@ class DeviceRule(
         waitUntil(timeoutMs) { EmulatorConsole.available && EmulatorConsole.hasCallWith(number) || callState() == 2 || dialedCount(number, sinceMs) > 0 }
         hangUpEverything()
         val placed = waitUntil(10_000) { dialedCount(number, sinceMs) > 0 }
-        if (!placed) Log.w(TAG, "no outgoing call to $number logged; call log since start: ${callLog(sinceMs)}")
+        if (!placed) Log.w(TAG, "no outgoing call to …${number.takeLast(4)} logged; call log since start: ${callLog(sinceMs).map { (n, t) -> "…${n.takeLast(4)}/$t" }}")
         return placed
     }
 
@@ -829,7 +845,7 @@ class DeviceRule(
         val now = System.currentTimeMillis()
         append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} telecom=${telecomCallState()} ")
         append("screenOn=${isScreenOn()} keyboard=${keyboardShown()} ")
-        append("gsm=[${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}] ")
+        append("gsm=[${gsmList()}] ")
         append("brain{${runCatching { GuardianReset.describe(container) }.getOrElse { "?$it" }}} ")
         append("shared=${sharedTypes()} paused=${state.isPaused(now)} lock=${state.config.lock.level}/${if (state.lockCodeHash.isEmpty()) "no code" else "code"} ")
         append("missing=${runCatching { container.capabilities.missing().map { it.key } }.getOrDefault(emptyList())} ")
