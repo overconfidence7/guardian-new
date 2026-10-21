@@ -34,5 +34,20 @@
     "tests": [
       "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
     ]
+  },
+  "NOTIF-STALE": {
+    "title": "After \"Turn back on\" (or \"Pause for 1 hour\") the persistent notification can keep showing the old state: ProtectionController.kt:35 posts from LocalStore.current, which LocalStore.kt:56 refreshes on another thread after the write, so it can still hold the state from before it; its post races the service's correct one",
+    "owner": "unassigned",
+    "tests": [
+      "gm_svc_014_notificationShowsTheStateJustChosen",
+      "gm_svc_005_pauseForOneHourFromTheShadeAndTurnBackOn"
+    ]
+  },
+  "FOREGROUND-WINDOW": {
+    "title": "An app switch Android stores a moment after its timestamp is never seen, so no pause card: ForegroundWatcher.poll (AppWatchers.kt:16-17) queries [last poll, now) and moves the start to now",
+    "owner": "unassigned",
+    "tests": [
+      "gm_pause_047_appSwitchStoredLateIsStillSeen"
+    ]
   }
 }

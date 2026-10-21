@@ -48,3 +48,7 @@
 
 ### GM-SVC-013 · Battery: the service sleeps when it should  `P1`
 **Steps:** see GM-PERF-010. Check the poll loop: with the screen off and no call, logcat or `dumpsys` should show the service mostly idle (30 s waits).
+
+### GM-SVC-014 · The notification always says the state the parent just chose  `P1`
+**Steps:** from the shade, "Pause for 1 hour", then at once "Turn back on"; repeat a few times, quickly.
+**Expect:** after each tap the notification settles on the state just chosen ("Guardian Mode is paused" / "Guardian Mode is on") and stays there. Known bug NOTIF-STALE: it can stay on "paused" after "Turn back on" (ProtectionController posts from `LocalStore.current`, which can still hold the state from before its own write).
