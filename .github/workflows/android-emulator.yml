@@ -4,23 +4,41 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths: [android/**, core/**, .github/workflows/android-emulator.yml]
+    paths: [android/**, core/**, qa/**, .github/workflows/android-emulator.yml]
   workflow_dispatch:
+    inputs:
+      api-level:
+        type: string
+        default: "36"
+      include-known-bugs:
+        type: boolean
+        default: false
+      host-checks:
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       api-level:
         type: string
         default: "36"
+      include-known-bugs:
+        description: Also run tests marked @KnownBug (the daily run does)
+        type: boolean
+        default: false
+      host-checks:
+        description: Also run qa/daily/device_checks.py (reboots, reinstalls, process death)
+        type: boolean
+        default: false
 
 concurrency:
-  group: emulator-${{ github.ref }}-${{ inputs.api-level || '36' }}
+  group: emulator-${{ github.workflow }}-${{ github.ref }}-${{ inputs.api-level || '36' }}
   cancel-in-progress: true
 
 jobs:
   instrumented:
     name: Instrumented tests (API ${{ inputs.api-level || '36' }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -34,6 +52,13 @@ jobs:
       - name: Build APKs
         run: ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon
         working-directory: android
+      - name: Build the stand-in apps
+        run: ./gradlew assembleDebug --no-daemon
+        working-directory: qa/antigravity/stub-apps
+      # An empty token turns console auth off, so tests inside the emulator can place
+      # fake calls through 10.0.2.2:5554 (support/EmulatorConsole.kt).
+      - name: Open the emulator console to tests
+        run: printf '' > ~/.emulator_console_auth_token
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -43,23 +68,38 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          working-directory: android
-          script: ./gradlew connectedDebugAndroidTest --no-daemon || (adb logcat -d -v time > app/build/reports/androidTests/logcat.txt; exit 1)
+          script: bash qa/daily/run-device-suite.sh qa-results/device-api${{ inputs.api-level || '36' }} ${{ inputs.include-known-bugs || false }} ${{ inputs.host-checks || false }}
       - name: Print failing tests
         if: failure()
-        working-directory: android
         run: |
+          # Short list last, so the end of the log (what tools and people read first) has it.
+          for f in qa-results/*/logcat-*.txt; do
+            [ -f "$f" ] && grep -E "AndroidRuntime: FATAL|TestRunner|GuardianBrain|CardLauncher" "$f" | tail -80
+          done
           python3 - <<'PY'
-          import glob, xml.etree.ElementTree as ET
-          for f in glob.glob("app/build/outputs/androidTest-results/connected/**/*.xml", recursive=True):
-              for case in ET.parse(f).getroot().iter("testcase"):
+          import glob, os, xml.etree.ElementTree as ET
+          rows = []
+          for f in sorted(glob.glob("qa-results/**/*.xml", recursive=True)):
+              try:
+                  root = ET.parse(f).getroot()
+              except ET.ParseError as e:
+                  rows.append(f"(couldn't read {f}: {e})")
+                  continue
+              for case in root.iter("testcase"):
                   for bad in list(case.findall("failure")) + list(case.findall("error")):
-                      print(f"::error title={case.get('classname')}.{case.get('name')}::{(bad.get('message') or '')[:300]}")
-                      print("\n".join((bad.text or "").splitlines()[:40]))
+                      first = ((bad.get("message") or bad.text or "").strip().splitlines() or [""])[0]
+                      rows.append(f"{case.get('classname', '').rsplit('.', 1)[-1]}.{case.get('name')}: {first[:220]}")
+          print(f"FAILED ({len(rows)}):")
+          print("\n".join(rows))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as out:
+              out.write(f"### Failing on this emulator ({len(rows)})\n\n" + "\n".join(f"- {r}" for r in rows) + "\n")
           PY
-          if [ -f app/build/reports/androidTests/logcat.txt ]; then
-            grep -E "AndroidRuntime|TestRunner|UiDump|FATAL|GuardianBrain|CardLauncher" app/build/reports/androidTests/logcat.txt | tail -150
-          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-device-api${{ inputs.api-level || '36' }}
+          path: qa-results
+          if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: always()
         with:

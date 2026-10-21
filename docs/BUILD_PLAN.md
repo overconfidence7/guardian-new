@@ -109,7 +109,7 @@ Everything runs in the cloud on GitHub Actions; nothing needs a local machine. G
 |---|---|---|---|
 | Every push and PR | `core` unit tests; Android lint, unit + Robolectric tests, Roborazzi screenshot **verify**, debug APK build; web typecheck, lint, Vitest, production build; functions build + tests and Firestore/Storage rules tests in the Firebase Emulator Suite | `ubuntu-latest` | < 12 min, parallel jobs |
 | Every PR to `main` and every push to `main` | Instrumented tests on an API 36 emulator (`reactivecircus/android-emulator-runner@v2`, KVM, `google_apis` x86_64) | `ubuntu-latest` | < 20 min |
-| Nightly (03:00 UTC) | Emulator matrix API 29, 33, 36, 37; Playwright e2e of the dashboard against emulators; dependency and vulnerability audit (`npm audit`, Gradle dependency check) | `ubuntu-latest` | ~60 min |
+| Daily (08:17 UTC, `qa/daily/README.md`) | Emulator matrix API 29, 33, 36 with the device suite and stand-in apps; Playwright e2e of the dashboard against emulators; dependency and vulnerability audit (`npm audit`, Gradle dependency check) | `ubuntu-latest` | ~60 min |
 | Weekly (Sunday) + before each release | Firebase Test Lab on physical devices (Spark free tier: 5 physical runs/day): a Samsung Galaxy A-series and a Pixel, Robo crawl + instrumented smoke suite | Test Lab | ~30 min |
 | Every release candidate | Everything above plus the manual checklist in `docs/RELEASE.md` on two real phones | Nate + CI | — |
 

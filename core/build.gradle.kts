@@ -29,7 +29,11 @@ dependencies {
 sourceSets["test"].resources.srcDir("../shared/fixtures")
 
 tasks.test {
-    useJUnitPlatform()
+    // Tests tagged "known-bug" describe behavior the app doesn't have yet. Pull-request CI
+    // leaves them out; the daily run passes -PincludeKnownBugs=true (see qa/daily/README.md).
+    useJUnitPlatform {
+        if (!providers.gradleProperty("includeKnownBugs").isPresent) excludeTags("known-bug")
+    }
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

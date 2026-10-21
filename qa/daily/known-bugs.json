@@ -1,0 +1,38 @@
+{
+  "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
+  "BOOT-API29": {
+    "title": "On Android 10 the service isn't back within 90 s of a restart (fine on Android 16); BOOT_COMPLETED start in Receivers.kt:31",
+    "owner": "unassigned",
+    "tests": [
+      "gm_svc_006_survivesReboot"
+    ]
+  },
+  "HOME-MEMORY": {
+    "title": "Home screen uses 170-210 MB (PSS) against the 150 MB budget in GM-PERF-007",
+    "owner": "unassigned",
+    "tests": [
+      "gm_perf_007_homeScreenMemory"
+    ]
+  },
+  "S-13": {
+    "title": "Family calls arm pause cards' contact check even when Guardian isn't the call screener (GuardianBrain.kt:38)",
+    "owner": "Antigravity test suite thread",
+    "tests": [
+      "gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm"
+    ]
+  },
+  "REMOVE-PERMISSION": {
+    "title": "\"Remove <app>\" on the remote-control warning flashes Android's uninstaller, which closes at once: Guardian doesn't declare REQUEST_DELETE_PACKAGES (AndroidManifest.xml; Launch.kt:45 sends ACTION_DELETE)",
+    "owner": "unassigned",
+    "tests": [
+      "gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation"
+    ]
+  },
+  "A11Y-64DP": {
+    "title": "The home screen's shield chip (\"Protected\") is 56 dp tall; SPEC bar 8 asks for 64 dp",
+    "owner": "unassigned",
+    "tests": [
+      "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
+    ]
+  }
+}
