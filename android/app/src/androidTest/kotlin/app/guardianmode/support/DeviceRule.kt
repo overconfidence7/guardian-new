@@ -636,21 +636,26 @@ class DeviceRule(
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
             ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
-        // Compose can replace the node between finding and tapping it (StaleObjectException,
-        // gm_scrn_006 on API 33); find it again and tap that.
+        // Compose can replace the node between finding and tapping it (StaleObjectException:
+        // gm_scrn_006 on API 33, then gm_tran_004 on the API 33 run of f42747b with three stale
+        // finds in a row while the switch rows redrew). So only its place is read from the node,
+        // finding it again if that goes stale, and the tap goes to that place on screen, as a
+        // finger would; UiObject2.click taps the same spot.
         var current = target
-        repeat(3) { attempt ->
-            try {
-                current.click()
-                device.waitForIdle()
-                return
+        repeat(5) { attempt ->
+            val center = try {
+                current.visibleCenter
             } catch (e: androidx.test.uiautomator.StaleObjectException) {
-                if (attempt == 2) throw e
+                if (attempt == 4) throw e
                 Log.w(TAG, "tap target went stale, finding it again: $selector")
                 device.waitForIdle(500)
                 val again = device.findObjects(selector)
                 current = again.firstOrNull { insideClickable(it) } ?: again.firstOrNull() ?: throw e
+                return@repeat
             }
+            device.click(center.x, center.y)
+            device.waitForIdle()
+            return
         }
     }
 
