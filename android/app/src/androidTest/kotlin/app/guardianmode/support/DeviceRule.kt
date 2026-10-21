@@ -169,9 +169,19 @@ class DeviceRule(
         ).forEach { shell(it) }
     }
 
+    /**
+     * Turns the screen on and gets past the lock screen, as a parent unlocking would. On a busy
+     * emulator one dismiss-keyguard can be dropped, and an app opened then stays behind the lock
+     * screen without ever coming to the front, so this waits until the lock screen is really gone.
+     */
     fun wake() {
         shell("input keyevent KEYCODE_WAKEUP")
-        shell("wm dismiss-keyguard")
+        val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+        val deadline = android.os.SystemClock.uptimeMillis() + 10_000
+        do {
+            shell("wm dismiss-keyguard")
+            Thread.sleep(500)
+        } while (keyguard.isKeyguardLocked && android.os.SystemClock.uptimeMillis() < deadline)
     }
 
     fun sleepScreen() = shell("input keyevent KEYCODE_SLEEP")
