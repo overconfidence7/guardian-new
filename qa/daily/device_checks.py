@@ -105,16 +105,27 @@ def top_activity() -> str:
     return m.group(1) if m else "?"
 
 
-def diagnosis() -> str:
-    """What the phone and Guardian look like right now, for a failure message."""
-    state = read_state()
+def saved_call_end() -> str:
+    """When the saved state says the last unknown call ended, or why that can't be told."""
+    out = adb("exec-out", "run-as", PKG, "cat", "files/datastore/guardian_state.json", ok=False)
+    try:
+        state = json.loads(out)
+    except json.JSONDecodeError:
+        # run-as can fail for a while after boot; that is not the same as nothing saved.
+        return f"state unreadable ({out.strip()[:80]!r})"
     ended = state.get("lastUnknownCallEndedAt")
     now_ms = int(sh("date +%s").strip() or "0") * 1000
-    ended_txt = f"{(now_ms - ended) // 1000}s ago" if isinstance(ended, int) and now_ms else repr(ended)
+    if not isinstance(ended, int):
+        return f"not saved ({len(state)} keys)"
+    return f"{(now_ms - ended) // 1000}s ago" + (" paused" if state.get("pausedUntil", 0) > now_ms else "")
+
+
+def diagnosis() -> str:
+    """What the phone and Guardian look like right now, for a failure message (kept short:
+    an annotation holds 4 KB)."""
     return (
-        f"top={top_activity()} keyguard={keyguard_showing()} service={service_running()} "
-        f"lastUnknownCallEnded={ended_txt} paused={state.get('pausedUntil', 0) > now_ms} "
-        f"home={home_holders()!r}"
+        f"top={top_activity().split('/')[-1]} keyguard={keyguard_showing()} service={service_running()} "
+        f"callEnded={saved_call_end()}"
     )
 
 
@@ -350,13 +361,14 @@ def pause_card_after_reboot(apk: str, **_) -> None:
     fresh_app(apk)
     standard_call()
     dismiss_safe_word()
+    saved = saved_call_end()
     adb("reboot", ok=False)
     time.sleep(10)
     wait_for_boot()
     wake()
     wait_for(service_running, 60)
     before = diagnosis()
-    check(pause_card_after_open(), f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (after boot: {before}; now: {diagnosis()})")
+    check(pause_card_after_open(), f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (call end before reboot: {saved}; after boot: {before}; now: {diagnosis()})")
 
 
 def survives_update(apk: str, **_) -> None:
