@@ -109,10 +109,9 @@ class DeviceRule(
     /**
      * Starts each test with the persistent notification matching the saved state, as a fresh
      * start of Guardian would post it (GuardianService.onCreate). A test that pauses and resumes
-     * quickly can leave it saying the opposite of the state (known bug NOTIF-STALE:
-     * ProtectionController posts from LocalStore.current, which can still hold the state from
-     * before its own write); without this, the next test that reads the notification fails for
-     * a bug it isn't about (gm_svc_001 after gm_svc_005 on PR #10's API 36 run).
+     * quickly can leave it out of step with the state (as NOTIF-STALE once did, see
+     * GM-SVC-014); without this, the next test that reads the notification would fail for a
+     * bug it isn't about (gm_svc_001 after gm_svc_005 on PR #10's API 36 run).
      */
     private fun syncProtectionNotification() {
         val nm = context.getSystemService(NotificationManager::class.java)

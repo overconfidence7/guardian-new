@@ -147,4 +147,4 @@ Suspect S-03. **Steps:** level Guided, locked. Pull down the shade and tap "Paus
 
 ### GM-PAUSE-047 · An app switch Android records a moment late  `P0`
 **Steps:** standard call, then open Chase while the phone is busy (CI emulator, or a budget phone with heavy apps open).
-**Expect:** the card, every time. Android stamps an app switch with the time it happened but stores it a little later; Guardian must still see a switch stamped before its previous look. Known bug FOREGROUND-WINDOW: `ForegroundWatcher.poll` only asks for events after its previous look, so a late-stored switch is never seen and no card comes.
+**Expect:** the card, every time. Android stamps an app switch with the time it happened but stores it a little later; Guardian must still see a switch stamped before its previous look.

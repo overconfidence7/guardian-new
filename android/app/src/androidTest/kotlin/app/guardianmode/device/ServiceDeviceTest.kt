@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.guardianmode.protection.Notifications
 import app.guardianmode.support.DeviceRule
-import app.guardianmode.support.KnownBug
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Rule
@@ -50,12 +49,6 @@ class ServiceDeviceTest {
         assertThat(rule.waitText("Ask your family for help")).isTrue()
     }
 
-    /**
-     * NOTIF-STALE: after "Turn back on" the shade can keep saying "Guardian Mode is paused"
-     * while protection is back on (ProtectionController posts from a copy of the state that can
-     * still hold the old value; ProtectionNotificationTest.gm_svc_014 shows it every time).
-     */
-    @KnownBug("NOTIF-STALE")
     @Test fun gm_svc_005_pauseForOneHourFromTheShadeAndTurnBackOn() {
         val pause = rule.notificationAction("Pause for 1 hour")
         assertThat(pause).isNotNull()
