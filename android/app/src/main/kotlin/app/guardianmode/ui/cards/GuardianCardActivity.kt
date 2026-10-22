@@ -87,6 +87,7 @@ class GuardianCardActivity : ComponentActivity() {
         }
 
         override fun removeApp() {
+            container.lock.allowUninstallPrompt()
             Launch.uninstall(this@GuardianCardActivity, req.packageName)
             finish()
         }

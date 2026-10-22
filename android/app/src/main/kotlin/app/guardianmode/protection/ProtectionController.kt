@@ -7,6 +7,7 @@ import app.guardianmode.cloud.DeviceStatus
 import app.guardianmode.core.DeviceConfig
 import app.guardianmode.core.LockLevel
 import app.guardianmode.core.ScreeningMode
+import app.guardianmode.data.LocalState
 import app.guardianmode.data.LocalStore
 
 /** Parent-facing protection switches and the housekeeping that keeps helpers informed. */
@@ -20,19 +21,18 @@ class ProtectionController(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun pauseFor(millis: Long) {
-        store.update { it.copy(pausedUntil = clock() + millis) }
-        refreshNotification()
+        refreshNotification(store.update { it.copy(pausedUntil = clock() + millis) })
     }
 
     suspend fun resume() {
-        store.update { it.copy(pausedUntil = 0) }
-        refreshNotification()
+        refreshNotification(store.update { it.copy(pausedUntil = 0) })
     }
 
-    private fun refreshNotification() {
-        if (!store.current.onboardingDone) return
+    // Posts from the state just written, not LocalStore.current, which catches up a moment later.
+    private fun refreshNotification(state: LocalState) {
+        if (!state.onboardingDone) return
         context.getSystemService(NotificationManager::class.java)
-            .notify(Notifications.ID_PROTECTION, Notifications.protection(context, store.current.isPaused(clock())))
+            .notify(Notifications.ID_PROTECTION, Notifications.protection(context, state.isPaused(clock())))
     }
 
     /**

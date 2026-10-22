@@ -9,7 +9,6 @@ import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceFixtures.SARAH
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceRule
-import app.guardianmode.support.KnownBug
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -96,14 +95,7 @@ class RemoteAccessDeviceTest {
         assertThat(opened.data["afterUnknownCall"]).isEqualTo("true")
     }
 
-    /**
-     * REMOVE-PERMISSION: Android's package installer only shows the uninstall confirmation
-     * to apps that declare REQUEST_DELETE_PACKAGES (apps targeting Android 9+); Guardian
-     * doesn't, so "Remove AnyDesk" flashes the installer, which closes at once (CI: the
-     * installer was in front for about 0.2 s, then Guardian). Launch.uninstall sends
-     * ACTION_DELETE without it (AndroidManifest.xml has no REQUEST_DELETE_PACKAGES).
-     */
-    @KnownBug("REMOVE-PERMISSION")
+    /** Android only keeps the uninstall confirmation up for apps that declare REQUEST_DELETE_PACKAGES. */
     @Test fun gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation() {
         assertThat(installAndTime(StubApp.ANYDESK, anyDeskWarning)).isNotNull()
         rule.tap("Remove AnyDesk")
@@ -115,8 +107,8 @@ class RemoteAccessDeviceTest {
         assertThat(rule.seen(By.textContains("AnyDesk"))).isTrue()
         rule.tap("OK")
         assertThat(rule.waitUntil(10_000) { !rule.isInstalled(StubApp.ANYDESK) }).isTrue()
-        // At Locked, docs/SPEC.md F13 says the package installer is covered too, which the
-        // case calls a P0 for this dialog; the conflict is reported rather than tested here.
+        // At Locked the installer is covered (SPEC F13) except for 30 s after this tap;
+        // core LockPolicyTest.gm_racc_006_removeOnAWarningLetsOnlyTheUninstallScreenThrough covers that.
     }
 
     @Test fun gm_racc_007_trustOnlyDismissesAndTrustsNothing() {

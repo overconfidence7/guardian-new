@@ -177,6 +177,14 @@ class LockPolicyTest {
     }
 
     @Test
+    fun gm_racc_006_removeOnAWarningLetsOnlyTheUninstallScreenThrough() {
+        val installer = "com.google.android.packageinstaller"
+        assertTrue(LockPolicy.blocks(installer, locked, allowed, unlocked = false))
+        assertFalse(LockPolicy.blocks(installer, locked, allowed, unlocked = false, uninstallPass = true))
+        assertTrue(LockPolicy.blocks("com.android.settings", locked, allowed, unlocked = false, uninstallPass = true))
+    }
+
+    @Test
     fun oldConfigsWithoutALockReadAsSimple() {
         val config = GuardianJson.decodeConfig("""{"parentName":"Ann"}""")
         assertEquals(LockLevel.SIMPLE, config.lock.level)

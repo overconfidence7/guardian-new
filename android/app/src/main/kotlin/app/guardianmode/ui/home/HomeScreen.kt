@@ -150,7 +150,7 @@ private fun ShieldChip(ui: HomeUi, onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .border(2.dp, color, RoundedCornerShape(50))
             .clickable(onClickLabel = "See what your family can see", role = Role.Button, onClick = onClick)
-            .heightIn(min = 48.dp)
+            .heightIn(min = Guardian.dimens.touchTarget)
             .padding(horizontal = 14.dp, vertical = 8.dp)
             .semantics { contentDescription = "$label. What my family can see." },
         verticalAlignment = Alignment.CenterVertically,

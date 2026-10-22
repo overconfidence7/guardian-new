@@ -28,6 +28,14 @@ class LockManager(
 ) {
     val hasCode: Boolean get() = store.current.lockCodeHash.isNotEmpty()
 
+    // Kept in memory only: it lasts 30 seconds, and a restart closing it early is harmless.
+    @Volatile private var uninstallPassUntil = 0L
+
+    /** "Remove" on a remote-access warning: let Android's uninstall screen show without the code, briefly. */
+    fun allowUninstallPrompt() {
+        uninstallPassUntil = clock() + LockPolicy.UNINSTALL_PASS_MILLIS
+    }
+
     val level: LockLevel get() = store.current.config.lock.level
 
     fun isUnlocked(): Boolean {
@@ -43,7 +51,7 @@ class LockManager(
     fun blocks(packageName: String, className: String = ""): Boolean {
         val s = store.current
         if (!hasCode || !s.onboardingDone || s.config.lock.level != LockLevel.LOCKED) return false
-        return LockPolicy.blocks(packageName, s.config.lock, allowedPackages(), isUnlocked(), className)
+        return LockPolicy.blocks(packageName, s.config.lock, allowedPackages(), isUnlocked(), className, uninstallPass = clock() < uninstallPassUntil)
     }
 
     suspend fun setCode(code: String) {

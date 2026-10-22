@@ -9,19 +9,38 @@ import android.content.pm.PackageManager
 /** Reads which app is in front from Usage access. Never reads anything inside the app. */
 class ForegroundWatcher(private val context: Context) {
     private val usage = context.getSystemService(UsageStatsManager::class.java)
-    private var lastQueryEnd = System.currentTimeMillis() - 10_000L
+    private var lastQueryEnd = System.currentTimeMillis() - LOOKBACK
+    private var lastReported: Pair<Long, Foreground>? = null
 
-    /** The screen most recently brought to the front since the last poll, if any. */
+    /**
+     * The screen most recently brought to the front, if it changed since the last poll.
+     *
+     * Android stamps a switch with when it happened but can store it a moment later, so a
+     * switch stamped before the last poll may only show up now. Each poll looks back
+     * [LOOKBACK] past the last one and reports the newest switch it hasn't reported yet.
+     */
     fun poll(now: Long = System.currentTimeMillis()): Foreground? {
-        val events = runCatching { usage.queryEvents(lastQueryEnd, now) }.getOrNull() ?: return null
+        val events = runCatching { usage.queryEvents(lastQueryEnd - LOOKBACK, now) }.getOrNull() ?: return null
         lastQueryEnd = now
         val event = UsageEvents.Event()
-        var latest: Foreground? = null
+        var latest: Pair<Long, Foreground>? = null
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) latest = Foreground(event.packageName, event.className.orEmpty())
+            if (event.eventType != UsageEvents.Event.ACTIVITY_RESUMED) continue
+            if (latest == null || event.timeStamp >= latest.first) {
+                latest = event.timeStamp to Foreground(event.packageName, event.className.orEmpty())
+            }
         }
-        return latest
+        val newest = latest ?: return null
+        val reported = lastReported
+        // Already reported, or older than what was: a newer switch is what's in front.
+        if (reported != null && (newest == reported || newest.first < reported.first)) return null
+        lastReported = newest
+        return newest.second
+    }
+
+    private companion object {
+        const val LOOKBACK = 10_000L
     }
 }
 

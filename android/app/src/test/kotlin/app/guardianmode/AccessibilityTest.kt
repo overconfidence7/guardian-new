@@ -48,7 +48,6 @@ import app.guardianmode.ui.transparency.TransparencyUi
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
 import org.junit.Test
-import org.junit.experimental.categories.Category
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -167,8 +166,7 @@ class AccessibilityTest {
         assertThat(small).isEmpty()
     }
 
-    /** docs/SPEC.md bar 8 asks for 64 dp; text buttons and the shield chip fall short. */
-    @Category(KnownBug::class)
+    /** docs/SPEC.md bar 8 asks for 64 dp. */
     @Test fun gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks() {
         val small = everyScreen { rule.smallTargets(rule.density, 64f) }
         assertThat(small).isEmpty()
