@@ -300,7 +300,7 @@ class DeviceRule(
 
     /** A line in logcat (tag GuardianTrace) with what the brain remembers, for reading a failed run afterwards. */
     fun trace(what: String) {
-        runCatching { Log.i(TRACE, "$what: top=${topPackage()} callState=${callState()} ${GuardianReset.describe(container)}") }
+        runCatching { Log.i(TRACE, "$what: top=${topPackage()} callState=${callState()} telecom=${telecomCallState()} ${GuardianReset.describe(container)}") }
     }
 
     /** When the last [open] sent its start command; latencies are measured from here. */
@@ -331,8 +331,8 @@ class DeviceRule(
     /** A real incoming call from [number]; returns once it rings (state 1). */
     fun ring(number: String): Boolean {
         requireConsole()
-        if (callState() != 0) {
-            Log.w(TAG, "a call was still up before ringing ${number.takeLast(4)}; ending it")
+        if (callState() != 0 || telecomCallState() > 0) {
+            Log.w(TAG, "a call was still up before ringing ${number.takeLast(4)} (registry=${callState()} telecom=${telecomCallState()}); ending it")
             hangUpEverything()
         }
         EmulatorConsole.incomingCall(number)
@@ -356,24 +356,38 @@ class DeviceRule(
     }
 
     /**
-     * Answers the ringing call. The console's `gsm accept` makes the modem's call active, and
-     * on Android 13+ Telecom follows. Android 10 is answered differently: see [answerOnQ].
+     * Answers the ringing call, once the phone really rings it, as a person can only answer a
+     * call the phone shows. [ring] returns when the modem rings (the registry says RINGING), but
+     * Telecom first runs its call filters, Guardian's call screener among them, and only then
+     * adds the call, rings it and sends the PHONE_STATE broadcasts Guardian listens to (a call
+     * still being filtered sends none). A `gsm accept` sent while Telecom is still filtering
+     * makes the modem's call active underneath a Telecom call that never rang: the registry
+     * says off-hook, but Guardian is never asked about the call and never gets RINGING or
+     * OFFHOOK, and Telecom logs the call as missed. That is what failed gm_pause_040 (API 33)
+     * and gm_pause_009 (API 36) on the daily run of 2026-10-23: callState=2 at "answer 8888"
+     * with the brain's tracker still IDLE and pendingScreen=null, and the call log showing
+     * 8888 as type 3 (missed). So this waits for Telecom's own state (TelephonyManager's call
+     * state is Telecom's on Android 12+) before answering, and checks Telecom, not the
+     * registry, to decide the call was answered. Android 10 is answered differently: see
+     * [answerOnQ].
      */
     fun answer(number: String) {
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
             answerOnQ(number)
             return
         }
-        runCatching { EmulatorConsole.accept(number) }
-        waitForCallState(2, timeoutMs = 3_000)
-        if (!waitUntil(1_500) { !incomingCallShown() }) {
-            Log.w(TAG, "incoming-call heads-up still up after gsm accept; answering through Telecom")
-            telecomAccept()
-            if (!waitUntil(3_000) { !incomingCallShown() }) shell("input keyevent KEYCODE_CALL")
-            waitUntil(3_000) { !incomingCallShown() }
+        if (!waitUntil(8_000) { telecomCallState() == 1 || incomingCallShown() }) {
+            Log.w(TAG, "Telecom never rang the call from ${number.takeLast(4)} (telecom=${telecomCallState()}); answering anyway")
         }
-        if (callState() != 2) shell("input keyevent KEYCODE_CALL")
-        trace("answer ${number.takeLast(4)}: incomingShown=${incomingCallShown()}")
+        runCatching { EmulatorConsole.accept(number) }
+        val answered = { telecomCallState() == 2 && !incomingCallShown() }
+        if (!waitUntil(3_000, answered)) {
+            Log.w(TAG, "Telecom didn't follow gsm accept (telecom=${telecomCallState()}, incomingShown=${incomingCallShown()}); answering through Telecom")
+            telecomAccept()
+            if (!waitUntil(3_000, answered)) shell("input keyevent KEYCODE_CALL")
+            waitUntil(3_000, answered)
+        }
+        trace("answer ${number.takeLast(4)}: telecom=${telecomCallState()} incomingShown=${incomingCallShown()}")
     }
 
     /**
@@ -451,6 +465,9 @@ class DeviceRule(
     fun hangUp(number: String) {
         runCatching { EmulatorConsole.hangUp(number) }
         if (!waitForCallState(0)) hangUpEverything()
+        // Telecom lets go of the call a moment after the modem; a call rung before it has would
+        // be "waiting" behind this one, and Guardian would get no RINGING for it.
+        if (!waitUntil(5_000) { telecomCallState() <= 0 }) Log.w(TAG, "Telecom still holds a call after hanging up ${number.takeLast(4)} (telecom=${telecomCallState()})")
         Thread.sleep(SETTLE) // let PhoneStateReceiver hand IDLE to the brain
         trace("hung up ${number.takeLast(4)}")
     }
@@ -925,10 +942,21 @@ class DeviceRule(
         val out = mutableListOf<String>()
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
-            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += "${e.packageName.substringAfterLast('.')}@-${(now - e.timeStamp) / 100 / 10.0}s"
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += "${shortPackage(e.packageName)}@-${(now - e.timeStamp) / 100 / 10.0}s"
         }
         out.takeLast(12)
     }.getOrDefault(emptyList())
+
+    /**
+     * A package name cut short for the one-line diagnostics: the last part, unless that part
+     * says nothing on its own. Chase is com.chase.sig.android, which the last part alone made
+     * "android", read as Android's own system dialogs (a chooser, an old-app warning) in the
+     * 2026-10-23 daily failures, when it was simply Chase on screen and resumed.
+     */
+    private fun shortPackage(name: String): String {
+        val parts = name.split('.')
+        return if (parts.size > 1 && parts.last() in setOf("android", "app", "ui", "market")) parts.takeLast(2).joinToString(".") else parts.last()
+    }
 
     /**
      * What's on screen, compactly (one entry per node with text or a description), to
@@ -943,7 +971,7 @@ class DeviceRule(
         val nodes = Regex("<node [^>]*>").findAll(out.toString()).mapNotNull { m ->
             fun attr(name: String) = Regex("$name=\"([^\"]*)\"").find(m.value)?.groupValues?.get(1).orEmpty()
             val text = attr("text").ifBlank { attr("content-desc") }
-            if (text.isBlank()) null else "${attr("package").substringAfterLast('.')}:${text.take(60)}${if (attr("clickable") == "true") "*" else ""}"
+            if (text.isBlank()) null else "${shortPackage(attr("package"))}:${text.take(60)}${if (attr("clickable") == "true") "*" else ""}"
         }.toList()
         return nodes.joinToString(" | ").take(3_500)
     }
