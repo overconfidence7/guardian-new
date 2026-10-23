@@ -20,19 +20,5 @@
     "tests": [
       "gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm"
     ]
-  },
-  "REMOVE-PERMISSION": {
-    "title": "\"Remove <app>\" on the remote-control warning flashes Android's uninstaller, which closes at once: Guardian doesn't declare REQUEST_DELETE_PACKAGES (AndroidManifest.xml; Launch.kt:45 sends ACTION_DELETE)",
-    "owner": "unassigned",
-    "tests": [
-      "gm_racc_006_removeAnyDeskOpensAndroidsUninstallConfirmation"
-    ]
-  },
-  "A11Y-64DP": {
-    "title": "The home screen's shield chip (\"Protected\") is 56 dp tall; SPEC bar 8 asks for 64 dp",
-    "owner": "unassigned",
-    "tests": [
-      "gm_a11y_001_everyTouchTargetIsAtLeast64dpAsTheSpecAsks"
-    ]
   }
 }

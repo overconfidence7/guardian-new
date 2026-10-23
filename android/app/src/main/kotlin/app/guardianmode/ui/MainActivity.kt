@@ -70,6 +70,9 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         // Pressing the Home button while already home always lands on the main screen.
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
+        // Home pressed while Guardian is already in front may not pause and resume it, so
+        // re-check here too: a permission can be taken away without leaving the home screen.
+        if (container.store.current.onboardingDone) needsAttention = container.protection.needsAttention()
         handlePauseRequest(intent)
     }
 
