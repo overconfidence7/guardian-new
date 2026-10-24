@@ -646,9 +646,18 @@ class DeviceRule(
         var matches = device.findObjects(selector)
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
-        repeat(3) {
-            if (matches.isEmpty() || matches.any { insideClickable(it) } || !scrollOnce(Direction.DOWN)) return@repeat
-            matches = device.findObjects(selector)
+        // A scroll must never lose the target: a match that went stale mid-redraw reads as not
+        // clickable, and three scrolls then carried the Remote-control alarm switch off the top
+        // (gm_racc_014 on API 33, run 40091417344). If a scroll leaves nothing matching, go back.
+        for (step in 1..3) {
+            if (matches.isEmpty() || matches.any { insideClickable(it) } || !scrollOnce(Direction.DOWN)) break
+            val after = device.findObjects(selector)
+            if (after.isEmpty()) {
+                scrollOnce(Direction.UP)
+                matches = device.findObjects(selector)
+                break
+            }
+            matches = after
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
             ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
