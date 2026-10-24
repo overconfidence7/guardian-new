@@ -646,18 +646,19 @@ class DeviceRule(
         var matches = device.findObjects(selector)
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
-        // A scroll must never lose the target: a match that went stale mid-redraw reads as not
-        // clickable, and three scrolls then carried the Remote-control alarm switch off the top
-        // (gm_racc_014 on API 33, run 40091417344). If a scroll leaves nothing matching, go back.
-        for (step in 1..3) {
-            if (matches.isEmpty() || matches.any { insideClickable(it) } || !scrollOnce(Direction.DOWN)) break
-            val after = device.findObjects(selector)
-            if (after.isEmpty()) {
-                scrollOnce(Direction.UP)
-                matches = device.findObjects(selector)
-                break
-            }
-            matches = after
+        // A scroll must never lose the target. The Remote-control alarm switch reads as not
+        // clickable, and scrolling down for "the button further down" carried it off the screen
+        // (gm_racc_014 on API 33, run 40091417344). So when no clickable match turns up, every
+        // scroll made here is undone before tapping what was first seen.
+        var downs = 0
+        while (downs < 3 && matches.isNotEmpty() && matches.none { insideClickable(it) } && scrollOnce(Direction.DOWN)) {
+            downs++
+            matches = device.findObjects(selector)
+        }
+        if (downs > 0 && matches.none { insideClickable(it) }) {
+            repeat(downs) { scrollOnce(Direction.UP) }
+            matches = device.findObjects(selector)
+            if (matches.isEmpty() && seen(selector, 500)) matches = device.findObjects(selector)
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
             ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
