@@ -175,7 +175,8 @@ class LockDeviceTest {
     @Test fun gm_lock_032_uninstallingGuardianIsCovered() {
         rule.setLock(LockLevel.LOCKED)
         assertThat(startCovered("am start -a android.intent.action.DELETE -d package:${rule.pkg}", rule.anyLockedCard)).isNotNull()
-        Log.i(TAG, "GM-LOCK-032 cover: ${rule.device.findObject(rule.anyLockedCard)?.text}")
+        // The card can redraw between finding and reading it (StaleObjectException on PR #10, API 36); this line is only a log.
+        Log.i(TAG, "GM-LOCK-032 cover: ${runCatching { rule.device.findObject(rule.anyLockedCard)?.text }.getOrNull()}")
         rule.tap("Go to my home screen")
         assertThat(rule.waitFor(rule.shieldChip)).isTrue()
         assertThat(rule.context.packageManager.getPackageInfo(rule.pkg, 0)).isNotNull()

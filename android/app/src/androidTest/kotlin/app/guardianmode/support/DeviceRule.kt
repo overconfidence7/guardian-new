@@ -82,6 +82,7 @@ class DeviceRule(
         resetState(initialState())
         GuardianReset.brain(container)
         GuardianService.start(context)
+        syncProtectionNotification()
         device.pressHome()
         device.waitForIdle()
     }
@@ -103,6 +104,25 @@ class DeviceRule(
         wake()
         repeat(2) { device.pressBack() }
         device.pressHome()
+    }
+
+    /**
+     * Starts each test with the persistent notification matching the saved state, as a fresh
+     * start of Guardian would post it (GuardianService.onCreate). A test that pauses and resumes
+     * quickly can leave it out of step with the state (as NOTIF-STALE once did, see
+     * GM-SVC-014); without this, the next test that reads the notification would fail for a
+     * bug it isn't about (gm_svc_001 after gm_svc_005 on PR #10's API 36 run).
+     */
+    private fun syncProtectionNotification() {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        if (!state.onboardingDone || protectionNotification() == null) return
+        val paused = state.isPaused(System.currentTimeMillis())
+        val want = if (paused) "Guardian Mode is paused" else "Guardian Mode is on"
+        val title = { protectionNotification()?.notification?.extras?.getCharSequence(android.app.Notification.EXTRA_TITLE)?.toString() }
+        if (waitUntil(2_000) { title() == want }) return
+        Log.w(TAG, "protection notification says \"${title()}\" but the saved state is ${if (paused) "paused" else "on"}; posting it again from the state")
+        nm.notify(Notifications.ID_PROTECTION, Notifications.protection(context, paused))
+        waitUntil(2_000) { title() == want }
     }
 
     // ---- State ----
@@ -167,11 +187,43 @@ class DeviceRule(
             "cmd role add-role-holder android.app.role.CALL_SCREENING $pkg",
             "dumpsys deviceidle whitelist +$pkg",
         ).forEach { shell(it) }
+        ensureHomeResolves()
     }
 
+    /** What Home opens right now: a component, or the system's chooser when no home app is set. */
+    fun homeResolvesTo(): String =
+        shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
+            .trim().lines().lastOrNull()?.trim().orEmpty()
+
+    /**
+     * Holding the Home role is what makes Home open Guardian. A test that takes the role away
+     * (gm_lock_041) or hands it to another launcher (gm_home_015) is followed by one that adds
+     * it back, and on API 33 that can leave the role held but no preferred home set: every Home
+     * press then shows Android's chooser and Guardian comes back only by itself 5 s later (the
+     * API 33 run of f42747b: GM-PERF-002 took 5026-5044 ms on all ten presses, the chooser,
+     * package "android", resumed between them). So this waits until Home resolves to Guardian
+     * and sets the home activity directly if the role alone didn't.
+     */
+    private fun ensureHomeResolves() {
+        if (waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) return
+        Log.w(TAG, "Home resolves to ${homeResolvesTo()} after adding the Home role; setting Guardian's home activity")
+        shell("cmd package set-home-activity $pkg/app.guardianmode.ui.MainActivity")
+        if (!waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) Log.w(TAG, "Home still resolves to ${homeResolvesTo()}")
+    }
+
+    /**
+     * Turns the screen on and gets past the lock screen, as a parent unlocking would. On a busy
+     * emulator one dismiss-keyguard can be dropped, and an app opened then stays behind the lock
+     * screen without ever coming to the front, so this waits until the lock screen is really gone.
+     */
     fun wake() {
         shell("input keyevent KEYCODE_WAKEUP")
-        shell("wm dismiss-keyguard")
+        val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+        val deadline = android.os.SystemClock.uptimeMillis() + 10_000
+        do {
+            shell("wm dismiss-keyguard")
+            Thread.sleep(500)
+        } while (keyguard.isKeyguardLocked && android.os.SystemClock.uptimeMillis() < deadline)
     }
 
     fun sleepScreen() = shell("input keyevent KEYCODE_SLEEP")
@@ -248,7 +300,7 @@ class DeviceRule(
 
     /** A line in logcat (tag GuardianTrace) with what the brain remembers, for reading a failed run afterwards. */
     fun trace(what: String) {
-        runCatching { Log.i(TRACE, "$what: top=${topPackage()} callState=${callState()} ${GuardianReset.describe(container)}") }
+        runCatching { Log.i(TRACE, "$what: top=${topPackage()} callState=${callState()} telecom=${telecomCallState()} ${GuardianReset.describe(container)}") }
     }
 
     /** When the last [open] sent its start command; latencies are measured from here. */
@@ -279,8 +331,8 @@ class DeviceRule(
     /** A real incoming call from [number]; returns once it rings (state 1). */
     fun ring(number: String): Boolean {
         requireConsole()
-        if (callState() != 0) {
-            Log.w(TAG, "a call was still up before ringing ${number.takeLast(4)}; ending it")
+        if (callState() != 0 || telecomCallState() > 0) {
+            Log.w(TAG, "a call was still up before ringing ${number.takeLast(4)} (registry=${callState()} telecom=${telecomCallState()}); ending it")
             hangUpEverything()
         }
         EmulatorConsole.incomingCall(number)
@@ -304,26 +356,93 @@ class DeviceRule(
     }
 
     /**
-     * Answers the ringing call. The console's `gsm accept` makes the modem's call active, and
-     * on Android 13+ Telecom follows; on Android 10 Telecom keeps ringing (the heads-up still
-     * offers Answer, no OFFHOOK is broadcast) although the registry already says off-hook. So
-     * Telecom itself is checked, and asked to answer (as adb's shell could) while it still rings.
+     * Answers the ringing call, once the phone really rings it, as a person can only answer a
+     * call the phone shows. [ring] returns when the modem rings (the registry says RINGING), but
+     * Telecom first runs its call filters, Guardian's call screener among them, and only then
+     * adds the call, rings it and sends the PHONE_STATE broadcasts Guardian listens to (a call
+     * still being filtered sends none). A `gsm accept` sent while Telecom is still filtering
+     * makes the modem's call active underneath a Telecom call that never rang: the registry
+     * says off-hook, but Guardian is never asked about the call and never gets RINGING or
+     * OFFHOOK, and Telecom logs the call as missed. That is what failed gm_pause_040 (API 33)
+     * and gm_pause_009 (API 36) on the daily run of 2026-10-23: callState=2 at "answer 8888"
+     * with the brain's tracker still IDLE and pendingScreen=null, and the call log showing
+     * 8888 as type 3 (missed). So this waits for Telecom's own state (TelephonyManager's call
+     * state is Telecom's on Android 12+) before answering, and checks Telecom, not the
+     * registry, to decide the call was answered. Android 10 is answered differently: see
+     * [answerOnQ].
      */
     fun answer(number: String) {
-        // Android 10: answer through Telecom first, so Telecom (and the PHONE_STATE broadcasts
-        // Guardian listens to) moves to off-hook, and the modem follows through the RIL.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) telecomAccept()
-        runCatching { EmulatorConsole.accept(number) }
-        waitForCallState(2, timeoutMs = 3_000)
-        if (!waitUntil(1_500) { !incomingCallShown() }) {
-            Log.w(TAG, "incoming-call heads-up still up after gsm accept; answering through Telecom")
-            telecomAccept()
-            if (!waitUntil(3_000) { !incomingCallShown() }) shell("input keyevent KEYCODE_CALL")
-            waitUntil(3_000) { !incomingCallShown() }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            answerOnQ(number)
+            return
         }
-        if (callState() != 2) shell("input keyevent KEYCODE_CALL")
-        trace("answer ${number.takeLast(4)}: incomingShown=${incomingCallShown()}")
+        if (!waitUntil(8_000) { telecomCallState() == 1 || incomingCallShown() }) {
+            Log.w(TAG, "Telecom never rang the call from ${number.takeLast(4)} (telecom=${telecomCallState()}); answering anyway")
+        }
+        runCatching { EmulatorConsole.accept(number) }
+        val answered = { telecomCallState() == 2 && !incomingCallShown() }
+        if (!waitUntil(3_000, answered)) {
+            Log.w(TAG, "Telecom didn't follow gsm accept (telecom=${telecomCallState()}, incomingShown=${incomingCallShown()}); answering through Telecom")
+            telecomAccept()
+            if (!waitUntil(3_000, answered)) shell("input keyevent KEYCODE_CALL")
+            waitUntil(3_000, answered)
+        }
+        trace("answer ${number.takeLast(4)}: telecom=${telecomCallState()} incomingShown=${incomingCallShown()}")
     }
+
+    /**
+     * Android 10. [ring] returns as soon as the modem rings (the registry says RINGING), while
+     * Telecom is still asking Guardian's call screener about the call. A `gsm accept` then makes
+     * the modem's call active underneath a Telecom call that hasn't started ringing yet, and on
+     * Android 10 Telecom never catches up: the heads-up keeps offering Answer, Guardian never
+     * gets OFFHOOK (its tracker stays at RINGING, so the call never counts as answered and no
+     * card follows), and answering through Telecom afterwards fails because the modem has no
+     * ringing call left. Every API 29 trace on 64f203e showed exactly that: registry 2, modem
+     * "active", heads-up still up, tracker RINGING. (The host checks wait 2 s before
+     * `gsm accept` and pass.) The shell's ANSWER_PHONE_CALLS can't be borrowed on Android 10
+     * either ("Neither user ... nor current process has ANSWER_PHONE_CALLS").
+     *
+     * So the call is answered the way a person does: wait until Telecom rings it, then the CALL
+     * key (PhoneWindowManager answers Telecom's ringing call), then the heads-up's Answer
+     * button; Telecom tells the modem. The console is only the last resort.
+     */
+    private fun answerOnQ(number: String) {
+        val ringing = waitUntil(8_000) { telecomCallState() == 1 || incomingCallShown() }
+        if (!ringing) Log.w(TAG, "Telecom never showed the call from ${number.takeLast(4)} ringing; answering anyway")
+        val answered = { telecomCallState() == 2 && !incomingCallShown() }
+        shell("input keyevent KEYCODE_CALL")
+        if (!waitUntil(4_000, answered)) {
+            Log.w(TAG, "CALL key didn't answer; tapping the heads-up's Answer")
+            val button = device.findObject(By.pkg("com.android.systemui").desc("Answer"))
+                ?: device.findObject(By.pkg("com.android.systemui").text(Pattern.compile("Answer", Pattern.CASE_INSENSITIVE)))
+            button?.click()
+            if (!waitUntil(4_000, answered)) {
+                Log.w(TAG, "Answer button didn't answer either; accepting through the console")
+                runCatching { EmulatorConsole.accept(number) }
+                waitUntil(3_000, answered)
+            }
+        }
+        waitForCallState(2, timeoutMs = 3_000)
+        trace("answer ${number.takeLast(4)} (Android 10): telecom=${telecomCallState()} incomingShown=${incomingCallShown()} gsm=${gsmList()}")
+    }
+
+    /**
+     * The modem's calls on one line, numbers cut to their last 4 digits: this goes to Guardian's
+     * own logcat, which gm_priv_004 searches for the caller's number.
+     */
+    fun gsmList(): String = runCatching {
+        EmulatorConsole.list().trim().replace("\n", "; ").replace(Regex("\\+?\\d{6,}")) { "…" + it.value.takeLast(4) }
+    }.getOrDefault("?")
+
+    /**
+     * The call state as Guardian's own process gets it from TelephonyManager: 0 idle, 1 ringing,
+     * 2 off-hook, -1 unreadable. On Android 10 this is Telecom's view (the one the PHONE_STATE
+     * broadcasts follow), which can differ from the registry's [callState].
+     */
+    fun telecomCallState(): Int = runCatching {
+        @Suppress("DEPRECATION")
+        context.getSystemService(android.telephony.TelephonyManager::class.java).callState
+    }.getOrDefault(-1)
 
     /** Telecom's acceptRingingCall with the shell's ANSWER_PHONE_CALLS, as adb could. */
     private fun telecomAccept() {
@@ -346,6 +465,9 @@ class DeviceRule(
     fun hangUp(number: String) {
         runCatching { EmulatorConsole.hangUp(number) }
         if (!waitForCallState(0)) hangUpEverything()
+        // Telecom lets go of the call a moment after the modem; a call rung before it has would
+        // be "waiting" behind this one, and Guardian would get no RINGING for it.
+        if (!waitUntil(5_000) { telecomCallState() <= 0 }) Log.w(TAG, "Telecom still holds a call after hanging up ${number.takeLast(4)} (telecom=${telecomCallState()})")
         Thread.sleep(SETTLE) // let PhoneStateReceiver hand IDLE to the brain
         trace("hung up ${number.takeLast(4)}")
     }
@@ -430,11 +552,32 @@ class DeviceRule(
      */
     fun callLog(sinceMs: Long): List<Pair<String, Int>> =
         Regex("number=([^,]*), type=(\\d+), date=(\\d+)")
-            .findAll(shell("content query --uri content://call_log/calls --projection number:type:date"))
+            .findAll(callLogQuery("number:type:date"))
             .filter { it.groupValues[3].toLong() >= sinceMs - 2_000 }
             .sortedByDescending { it.groupValues[3].toLong() }
             .map { it.groupValues[1] to it.groupValues[2].toInt() }
             .toList()
+
+    /**
+     * The shell's `content query` of the call log. Its errors go to stderr, which a test can't
+     * read, so an answer that is neither rows nor "No result found." means the shell couldn't
+     * read the call log at all (on API 29: "Permission Denial ... requires READ_CALL_LOG", which
+     * run-device-suite.sh prints before the tests); it is then read as root, and if that fails
+     * too it is logged instead of silently reading as an empty call log.
+     */
+    fun callLogQuery(projection: String): String {
+        val query = "content query --uri content://call_log/calls --projection $projection"
+        val readable = { out: String -> "Row:" in out || "No result" in out }
+        val out = shell(query)
+        if (readable(out)) return out
+        // Android 10's shell doesn't request READ_CALL_LOG at all ("Package com.android.shell has
+        // not requested permission"), so it can't be granted one; root can read it, as `adb root`
+        // could (the emulator images let the shell run su).
+        val asRoot = shell("su 0 $query")
+        if (readable(asRoot)) return asRoot
+        Log.w(TAG, "the call log can't be read, as the shell or as root: \"${(out + asRoot).trim().take(200)}\"")
+        return out
+    }
 
     /** Outgoing calls to [number] (any formatting) logged since [sinceMs]. */
     fun dialedCount(number: String, sinceMs: Long): Int {
@@ -452,7 +595,7 @@ class DeviceRule(
         waitUntil(timeoutMs) { EmulatorConsole.available && EmulatorConsole.hasCallWith(number) || callState() == 2 || dialedCount(number, sinceMs) > 0 }
         hangUpEverything()
         val placed = waitUntil(10_000) { dialedCount(number, sinceMs) > 0 }
-        if (!placed) Log.w(TAG, "no outgoing call to $number logged; call log since start: ${callLog(sinceMs)}")
+        if (!placed) Log.w(TAG, "no outgoing call to …${number.takeLast(4)} logged; call log since start: ${callLog(sinceMs).map { (n, t) -> "…${n.takeLast(4)}/$t" }}")
         return placed
     }
 
@@ -503,14 +646,43 @@ class DeviceRule(
         var matches = device.findObjects(selector)
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
-        repeat(3) {
-            if (matches.isEmpty() || matches.any { insideClickable(it) } || !scrollOnce(Direction.DOWN)) return@repeat
+        // A scroll must never lose the target. The Remote-control alarm switch reads as not
+        // clickable, and scrolling down for "the button further down" carried it off the screen
+        // (gm_racc_014 on API 33, run 40091417344). So when no clickable match turns up, every
+        // scroll made here is undone before tapping what was first seen.
+        var downs = 0
+        while (downs < 3 && matches.isNotEmpty() && matches.none { insideClickable(it) } && scrollOnce(Direction.DOWN)) {
+            downs++
             matches = device.findObjects(selector)
+        }
+        if (downs > 0 && matches.none { insideClickable(it) }) {
+            repeat(downs) { scrollOnce(Direction.UP) }
+            matches = device.findObjects(selector)
+            if (matches.isEmpty() && seen(selector, 500)) matches = device.findObjects(selector)
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
             ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
-        target.click()
-        device.waitForIdle()
+        // Compose can replace the node between finding and tapping it (StaleObjectException:
+        // gm_scrn_006 on API 33, then gm_tran_004 on the API 33 run of f42747b with three stale
+        // finds in a row while the switch rows redrew). So only its place is read from the node,
+        // finding it again if that goes stale, and the tap goes to that place on screen, as a
+        // finger would; UiObject2.click taps the same spot.
+        var current = target
+        repeat(5) { attempt ->
+            val center = try {
+                current.visibleCenter
+            } catch (e: androidx.test.uiautomator.StaleObjectException) {
+                if (attempt == 4) throw e
+                Log.w(TAG, "tap target went stale, finding it again: $selector")
+                device.waitForIdle(500)
+                val again = device.findObjects(selector)
+                current = again.firstOrNull { insideClickable(it) } ?: again.firstOrNull() ?: throw e
+                return@repeat
+            }
+            device.click(center.x, center.y)
+            device.waitForIdle()
+            return
+        }
     }
 
     fun tap(text: String) = tapOn(By.text(text))
@@ -537,13 +709,19 @@ class DeviceRule(
         hideKeyboard()
         if (has(selector)) return true
         // Down to the end of the page, then back up to the top.
+        var moves = 0
         for (direction in listOf(Direction.DOWN, Direction.UP)) {
             repeat(25) {
                 val moved = scrollOnce(direction)
+                if (moved) moves++
                 if (has(selector)) return true
                 if (!moved) return@repeat
             }
         }
+        // Says which it was: nothing of Guardian's that scrolls (another window on top, the page not
+        // drawn yet) or a page scrolled end to end without it (gm_racc_014 on API 33, 589a1b6).
+        val scrollable = runCatching { device.hasObject(By.pkg(pkg).scrollable(true)) }.getOrDefault(false)
+        Log.w(TAG, "not seen after $moves scroll moves: $selector (top=${topPackage()}, Guardian scrollable on screen=$scrollable)")
         return false
     }
 
@@ -554,7 +732,9 @@ class DeviceRule(
      */
     private fun scrollOnce(direction: Direction): Boolean {
         val scrollable = runCatching { device.findObject(By.pkg(pkg).scrollable(true)) }.getOrNull() ?: return false
-        val more = runCatching { scrollable.scroll(direction, 0.6f) }.getOrDefault(false)
+        val more = runCatching { scrollable.scroll(direction, 0.6f) }
+            .onFailure { Log.w(TAG, "scroll $direction threw $it") }
+            .getOrDefault(false)
         device.waitForIdle(500)
         return more
     }
@@ -738,9 +918,9 @@ class DeviceRule(
     /** What the test and Guardian see right now, on one line, for failure reports. */
     fun diagnostics(): String = buildString {
         val now = System.currentTimeMillis()
-        append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} ")
+        append("top=${topPackage()} resumed=${resumedActivity()?.javaClass?.simpleName} callState=${callState()} telecom=${telecomCallState()} ")
         append("screenOn=${isScreenOn()} keyboard=${keyboardShown()} ")
-        append("gsm=[${runCatching { EmulatorConsole.list().trim().replace("\n", "; ") }.getOrDefault("?")}] ")
+        append("gsm=[${gsmList()}] ")
         append("brain{${runCatching { GuardianReset.describe(container) }.getOrElse { "?$it" }}} ")
         append("shared=${sharedTypes()} paused=${state.isPaused(now)} lock=${state.config.lock.level}/${if (state.lockCodeHash.isEmpty()) "no code" else "code"} ")
         append("missing=${runCatching { container.capabilities.missing().map { it.key } }.getOrDefault(emptyList())} ")
@@ -749,11 +929,15 @@ class DeviceRule(
         append("calls=${calls.map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
         if (calls.isEmpty()) {
             // Tells "nothing logged" apart from "the provider wouldn't answer the shell".
-            val raw = runCatching { shell("content query --uri content://call_log/calls --projection type:date") }.getOrElse { "?$it" }
+            val raw = runCatching { callLogQuery("type:date") }.getOrElse { "?$it" }
             append("callLogRaw=${raw.lines().size} lines: ${raw.trim().takeLast(160).replace("\n", " / ")} ")
         }
+        // By the line's own tag ("W/DeviceRule( 123): ..."), not words in it: stack traces other
+        // tags print mention DeviceRule on every line.
         val log = ownLogcat().lines().filter { line ->
-            DIAG_TAGS.any { "$it" in line } && (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
+            val tag = line.drop(2).substringBefore('(').trim()
+            (tag in DIAG_TAGS || tag == "UiDevice" && "\tat " !in line) &&
+                (line.startsWith("W/") || line.startsWith("E/") || "Card" in line)
         }.takeLast(8)
         append("log=$log ")
         append("screen=${runCatching { screenSummary().take(1_500) }.getOrDefault("?")}")
@@ -768,10 +952,21 @@ class DeviceRule(
         val out = mutableListOf<String>()
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
-            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += "${e.packageName.substringAfterLast('.')}@-${(now - e.timeStamp) / 100 / 10.0}s"
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += "${shortPackage(e.packageName)}@-${(now - e.timeStamp) / 100 / 10.0}s"
         }
         out.takeLast(12)
     }.getOrDefault(emptyList())
+
+    /**
+     * A package name cut short for the one-line diagnostics: the last part, unless that part
+     * says nothing on its own. Chase is com.chase.sig.android, which the last part alone made
+     * "android", read as Android's own system dialogs (a chooser, an old-app warning) in the
+     * 2026-10-23 daily failures, when it was simply Chase on screen and resumed.
+     */
+    private fun shortPackage(name: String): String {
+        val parts = name.split('.')
+        return if (parts.size > 1 && parts.last() in setOf("android", "app", "ui", "market")) parts.takeLast(2).joinToString(".") else parts.last()
+    }
 
     /**
      * What's on screen, compactly (one entry per node with text or a description), to
@@ -786,7 +981,7 @@ class DeviceRule(
         val nodes = Regex("<node [^>]*>").findAll(out.toString()).mapNotNull { m ->
             fun attr(name: String) = Regex("$name=\"([^\"]*)\"").find(m.value)?.groupValues?.get(1).orEmpty()
             val text = attr("text").ifBlank { attr("content-desc") }
-            if (text.isBlank()) null else "${attr("package").substringAfterLast('.')}:${text.take(60)}${if (attr("clickable") == "true") "*" else ""}"
+            if (text.isBlank()) null else "${shortPackage(attr("package"))}:${text.take(60)}${if (attr("clickable") == "true") "*" else ""}"
         }.toList()
         return nodes.joinToString(" | ").take(3_500)
     }
@@ -796,7 +991,7 @@ class DeviceRule(
         /** Logcat tag of the one-line failure diagnostics CI reports. */
         const val DIAG = "GuardianDiag"
         const val TRACE = "GuardianTrace"
-        private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime")
+        private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime", TAG)
         const val CALL_OUTGOING = 2
         const val TIMEOUT = 8_000L
         /** How long to watch for something that must not appear. */
