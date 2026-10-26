@@ -131,7 +131,7 @@ Suspect S-03. **Steps:** level Guided, locked. Pull down the shade and tap "Paus
 **Expect (per spec):** the card still appears within the 30 minutes. The rule state lives in memory (`TripwireEngine`), so a killed process may forget the call. Record what happens in each case; if a killed process means no card, it's a P0 on budget phones where Android kills background apps often.
 
 ### GM-PAUSE-043 · Reboot after the call  `P1`
-**Steps:** standard call, reboot the emulator, unlock, open Chase within the window.
+**Steps:** standard call, wait until Guardian has saved the call's end (moments on a settled phone; right after an earlier reboot, Android can hold the call broadcasts behind the boot ones), reboot the emulator, unlock, open Chase within the window.
 **Expect:** record. (Same memory issue as 042.)
 
 ### GM-PAUSE-044 · Usage access revoked  `P0`
