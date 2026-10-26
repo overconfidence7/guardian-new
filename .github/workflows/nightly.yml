@@ -115,7 +115,9 @@ jobs:
 
   web-e2e:
     name: Dashboard end-to-end (Playwright + Firebase emulators)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.56 can't install
+    # chromium ("Playwright does not support chromium on ubuntu26.04-x64").
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -125,8 +127,10 @@ jobs:
         with: { distribution: temurin, java-version: "21" }
       - run: npm ci && npm run build
         working-directory: firebase/functions
-      - run: npm ci && npx playwright install --with-deps chromium
+      - run: npm ci
         working-directory: web
+      # Recorded as a step so a browser that can't install shows up in the report by name.
+      - run: python3 qa/daily/junit_step.py --name web_e2e_browserInstall --out qa-results/web-e2e --cwd web -- npx playwright install --with-deps chromium
       - name: Playwright against the emulator suite
         working-directory: firebase
         continue-on-error: true
