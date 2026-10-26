@@ -647,6 +647,14 @@ class DeviceRule(
         hideKeyboard()
         check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
         var matches = device.findObjects(selector)
+        // A node Compose has just replaced reads as not clickable (insideClickable can't walk
+        // it), which would send the scroll below away from a target already in view. Find
+        // stale matches again before deciding anything from them.
+        repeat(3) {
+            if (matches.none { isStale(it) }) return@repeat
+            device.waitForIdle(500)
+            matches = device.findObjects(selector)
+        }
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
         // A scroll must never lose the target. The Remote-control alarm switch reads as not
@@ -678,7 +686,9 @@ class DeviceRule(
                 if (attempt == 4) throw e
                 Log.w(TAG, "tap target went stale, finding it again: $selector")
                 device.waitForIdle(500)
-                val again = device.findObjects(selector)
+                // Gone from view (the page moved while it redrew, as in gm_scrn_006 on PR #12's
+                // API 36 run, where the switch ended up scrolled off): scroll it back first.
+                val again = device.findObjects(selector).ifEmpty { if (seen(selector, 1_000)) device.findObjects(selector) else emptyList() }
                 current = again.firstOrNull { insideClickable(it) } ?: again.firstOrNull() ?: throw e
                 return@repeat
             }
@@ -690,6 +700,9 @@ class DeviceRule(
 
     fun tap(text: String) = tapOn(By.text(text))
     fun tapDesc(desc: String) = tapOn(By.desc(desc))
+
+    private fun isStale(obj: UiObject2): Boolean =
+        runCatching { obj.visibleBounds }.exceptionOrNull() is androidx.test.uiautomator.StaleObjectException
 
     private fun insideClickable(obj: UiObject2): Boolean = runCatching {
         var node: UiObject2? = obj
