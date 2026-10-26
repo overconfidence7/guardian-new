@@ -53,7 +53,7 @@ class PerformanceDeviceTest {
         val sorted = times.sorted()
         val median = sorted[sorted.size / 2]
         Log.i(TAG, "$id ms: min=${sorted.first()} median=$median max=${sorted.last()} all=$times (bar $barMs)")
-        assertWithMessage("$id median (ms)").that(median).isAtMost(barMs)
+        assertWithMessage("$id median (ms) of $sorted").that(median).isAtMost(barMs)
     }
 
     /**

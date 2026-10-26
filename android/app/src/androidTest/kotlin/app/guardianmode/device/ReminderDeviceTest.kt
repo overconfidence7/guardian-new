@@ -1,7 +1,9 @@
 package app.guardianmode.device
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,6 +16,7 @@ import app.guardianmode.support.DeviceRule
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,6 +41,28 @@ class ReminderDeviceTest {
     /** Only the card has these (the notification and the home screen's strip show the title too). */
     private val cardButtons = By.text("Remind me in 10 minutes")
 
+    /** The reminder times this test scheduled, so their snoozes can be called off after it. */
+    private val scheduled = mutableListOf<Long>()
+
+    /**
+     * "Remind me in 10 minutes" (gm_help_024) sets an alarm that outlives the test, and the next
+     * tests use the same reminder id, so ten minutes later that card would come up over another
+     * test's screen (gm_help_025 on the API 33 run of f42747b: a card in front, resumed 3 s
+     * before the transparency page was checked). Cancels them as ReminderScheduler.snooze set them.
+     */
+    @After fun cancelSnoozes() {
+        val alarms = rule.context.getSystemService(AlarmManager::class.java)
+        for (at in scheduled) {
+            val snooze = PendingIntent.getBroadcast(
+                rule.context, "r1@$at".hashCode(),
+                Intent(rule.context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_SNOOZED),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE,
+            ) ?: continue
+            alarms.cancel(snooze)
+            snooze.cancel()
+        }
+    }
+
     /** Schedules the pill reminder at the next whole minute at least 20 s away; returns when it should fire. */
     private fun reminderSoon(notifyFamilyIfMissed: Boolean = true): Long {
         val now = ZonedDateTime.now(ZoneId.systemDefault())
@@ -52,7 +77,7 @@ class ReminderDeviceTest {
                 ),
             )
         }
-        return at.toInstant().toEpochMilli()
+        return at.toInstant().toEpochMilli().also { scheduled += it }
     }
 
     private fun waitForCard(at: Long): Long? {

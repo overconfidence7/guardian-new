@@ -25,6 +25,18 @@ for apk in "$STUBS"/*/debug/*.apk; do
   esac
 done
 
+# Tests read the call log through the shell's `content query` (DeviceRule.callLogQuery). Android
+# 10's shell doesn't request READ_CALL_LOG, so there DeviceRule reads it as root (su). The
+# shell's errors go to stderr, which a test can't see, so they're shown here.
+calllog_probe() { adb shell "$@" content query --uri content://call_log/calls --projection type 2>&1 | head -3 | tr '\n' ' '; }
+probe="$(calllog_probe)"
+case "$probe" in
+  *Row:*|*"No result"*) ;;
+  *)
+    echo "::notice title=$(basename "$OUT") call log::the shell can't read the call log: ${probe:-<nothing>}; as root: $(calllog_probe su 0)"
+    ;;
+esac
+
 # A bigger log buffer, so the end-of-run logcat still holds the early tests' traces.
 adb logcat -G 32M >/dev/null 2>&1 || true
 adb logcat -c >/dev/null 2>&1 || true

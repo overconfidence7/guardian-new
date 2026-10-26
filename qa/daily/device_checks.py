@@ -67,10 +67,66 @@ def wait_for_boot(timeout: int = 300) -> None:
     raise CheckFailed("emulator didn't finish booting")
 
 
+def keyguard_showing() -> bool:
+    """True while the lock screen is up, as the window policy (API 29) or the keyguard controller (API 30+) reports it."""
+    out = sh("dumpsys window policy") + sh("dumpsys activity activities")
+    return bool(re.search(r"(mKeyguardShowing|isKeyguardShowing|mShowingLockscreen)=true|KeyguardServiceDelegate\s+showing=true", out))
+
+
 def wake() -> None:
+    """Screen on and past the lock screen. Right after a boot one dismiss can be dropped (the
+    same thing DeviceRule.wake retries for), and an app opened then stays behind the lock
+    screen, so this tries until the lock screen is gone."""
     sh("input keyevent KEYCODE_WAKEUP")
-    sh("wm dismiss-keyguard")
-    sh("input keyevent 82")
+    for _ in range(10):
+        sh("wm dismiss-keyguard")
+        sh("input keyevent 82")
+        time.sleep(1)
+        if not keyguard_showing():
+            return
+    print("  wake: the lock screen is still showing after 10 tries")
+
+
+def home_holders() -> str:
+    """Who holds the home role. Android 10's `cmd role` has no get-role-holders, so there the
+    phone's resolved home activity (what the Home button opens) is reported instead."""
+    out = sh("cmd role get-role-holders android.app.role.HOME").strip()
+    if "Unknown command" not in out:
+        return out
+    resolved = sh("cmd package resolve-activity -c android.intent.category.HOME -a android.intent.action.MAIN")
+    m = re.search(r"packageName=(\S+)", resolved)
+    return m.group(1) if m else f"? ({resolved.strip()[:120]})"
+
+
+def top_activity() -> str:
+    """The resumed activity's component, as the activity manager reports it."""
+    out = sh("dumpsys activity activities")
+    m = re.search(r"(?:topResumedActivity|mResumedActivity|ResumedActivity)[:=]\s*ActivityRecord\{\S+ \S+ (\S+)", out)
+    return m.group(1) if m else "?"
+
+
+def saved_call_end() -> str:
+    """When the saved state says the last unknown call ended, or why that can't be told."""
+    out = adb("exec-out", "run-as", PKG, "cat", "files/datastore/guardian_state.json", ok=False)
+    try:
+        state = json.loads(out)
+    except json.JSONDecodeError:
+        # run-as can fail for a while after boot; that is not the same as nothing saved.
+        return f"state unreadable ({out.strip()[:80]!r})"
+    ended = state.get("lastUnknownCallEndedAt")
+    now_ms = int(sh("date +%s").strip() or "0") * 1000
+    if not isinstance(ended, int):
+        return f"not saved ({len(state)} keys)"
+    return f"{(now_ms - ended) // 1000}s ago" + (" paused" if state.get("pausedUntil", 0) > now_ms else "")
+
+
+def diagnosis() -> str:
+    """What the phone and Guardian look like right now, for a failure message (kept short:
+    an annotation holds 4 KB)."""
+    return (
+        f"top={top_activity().split('/')[-1]} keyguard={keyguard_showing()} service={service_running()} "
+        f"callEnded={saved_call_end()}"
+    )
 
 
 def grant_everything() -> None:
@@ -195,8 +251,21 @@ def pause_card_within(seconds: float = 5) -> bool:
 
 
 def pause_card_after_open(package: str = CHASE) -> bool:
-    open_app(package)
-    shown = pause_card_within(8)
+    """Opens the app and waits for the card. An app that never came to the front (the lock
+    screen still up, a start dropped while the phone is busy) is opened again after a wake,
+    since no card can be expected for an app that wasn't opened."""
+    shown = False
+    for attempt in range(2):
+        open_app(package)
+        shown = pause_card_within(8)
+        if shown:
+            break
+        top = top_activity()
+        if package in top:
+            print(f"  {package} is in front and no card came: {diagnosis()}")
+            break
+        print(f"  {package} didn't come to the front (try {attempt + 1}): {diagnosis()}")
+        wake()
     sh("input keyevent KEYCODE_HOME")
     return shown
 
@@ -292,12 +361,14 @@ def pause_card_after_reboot(apk: str, **_) -> None:
     fresh_app(apk)
     standard_call()
     dismiss_safe_word()
+    saved = saved_call_end()
     adb("reboot", ok=False)
     time.sleep(10)
     wait_for_boot()
     wake()
     wait_for(service_running, 60)
-    check(pause_card_after_open(), "no pause card for Chase after an unknown call and a reboot inside the 30-minute window")
+    before = diagnosis()
+    check(pause_card_after_open(), f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (call end before reboot: {saved}; after boot: {before}; now: {diagnosis()})")
 
 
 def survives_update(apk: str, **_) -> None:
@@ -306,6 +377,7 @@ def survives_update(apk: str, **_) -> None:
     check(wait_for(service_running, 30) is not None, "service never started")
     time.sleep(5)  # let the app finish writing its first-run defaults
     before = read_state()
+    home_before = home_holders()
     adb("install", "-r", apk, timeout=300)
     took = wait_for(service_running, 60)
     check(took is not None, "service didn't come back after the update (MY_PACKAGE_REPLACED)")
@@ -314,7 +386,9 @@ def survives_update(apk: str, **_) -> None:
     lost = sorted(k for k in before if k not in after)
     check(not lost, f"settings lost across the update: {lost}")
     check(before.get("config") == after.get("config"), "the helper's settings changed across the update")
-    check(PKG in sh("cmd role get-role-holders android.app.role.HOME"), "Guardian lost the home role after the update")
+    # The role controller re-checks roles after a package changes, on its own time: give it a moment.
+    kept = wait_for(lambda: PKG in home_holders(), 30)
+    check(kept is not None, f"Guardian lost the home role after the update (home before: {home_before!r}; 30 s after: {home_holders()!r})")
 
 
 def force_stop_then_home(apk: str, **_) -> None:
