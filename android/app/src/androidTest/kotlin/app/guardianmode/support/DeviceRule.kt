@@ -73,6 +73,7 @@ class DeviceRule(
         shell("svc power stayon true")
         shell("settings put system screen_off_timeout 1800000")
         if (grantAll) grantEverything()
+        closeStandIns()
         runCatching {
             val audio = context.getSystemService(AudioManager::class.java)
             audio.setStreamVolume(AudioManager.STREAM_RING, (audio.getStreamMaxVolume(AudioManager.STREAM_RING) * 5) / 7, 0)
@@ -190,6 +191,20 @@ class DeviceRule(
         ensureHomeResolves()
     }
 
+    /**
+     * Closes every stand-in app so none of their windows outlive the test that opened them.
+     * A stand-in window left behind with its starting window stuck in a reveal animation
+     * makes every key and tap UiAutomator injects wait 5 s: before a synchronous injection
+     * Android waits for window animations to finish (WindowManagerService
+     * .syncInputTransactions -> waitForAnimationsToComplete, 5 s timeout). That was GM-PERF-002's
+     * 5.0 s Home presses on API 33 (daily run 40352114385: "Timed out waiting for animations
+     * to complete, animatingContainer=Window{... com.coinbase.android/...StubActivity}
+     * animationType=starting_reveal" right before each home START).
+     */
+    private fun closeStandIns() {
+        StubApp.entries.forEach { shell("am force-stop ${it.packageName}") }
+    }
+
     /** What Home opens right now: a component, or the system's chooser when no home app is set. */
     fun homeResolvesTo(): String =
         shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
@@ -203,9 +218,8 @@ class DeviceRule(
      *
      * It was added for GM-PERF-002's 5 s Home presses on API 33, read then as Android's home
      * chooser ("android" resumed between presses). That "android" was Chase,
-     * com.chase.sig.android (see [shortPackage]); the 5 s presses came back with this in place
-     * (daily run 40318214733), so it isn't their cause. PerformanceDeviceTest traces what the
-     * system did during a slow press.
+     * com.chase.sig.android (see [shortPackage]); the real cause was a stand-in window stuck
+     * animating (see [closeStandIns]).
      */
     private fun ensureHomeResolves() {
         if (waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) return
