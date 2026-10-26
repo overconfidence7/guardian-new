@@ -356,12 +356,37 @@ def survives_reboot(apk: str, **_) -> None:
     wake()
 
 
+def broadcasts_idle(timeout: int = 120) -> None:
+    """Waits until Android has delivered every queued broadcast. Right after a boot the queue
+    still holds BOOT_COMPLETED for every app, and Guardian hears about calls through a
+    PHONE_STATE receiver on that same queue, so a call placed then reaches it many seconds
+    late. Android 10 may not have the command; then this returns at once."""
+    try:
+        sh("am wait-for-broadcast-idle", timeout=timeout)
+    except subprocess.TimeoutExpired:
+        print(f"  broadcasts still queued after {timeout} s")
+
+
 def pause_card_after_reboot(apk: str, **_) -> None:
-    """GM-PAUSE-043 + GM-SVC-006 second half: card after a call, then reboot, then Chase."""
+    """GM-PAUSE-043 + GM-SVC-006 second half: card after a call, then reboot, then Chase.
+
+    This runs right after gm_svc_006_survivesReboot's reboot. On the 2026-10-25 and
+    2026-10-26 API 36 runs (and 2026-10-24 d7804f3) the call's end was "not saved" when the
+    phone was rebooted 2-8 s after hanging up: the PHONE_STATE broadcasts were still behind
+    the boot broadcasts, so the reboot came before Guardian heard about the call at all. It
+    passed whenever the previous check had spent longer after its boot. So the call waits for
+    the broadcast queue, and the reboot waits until the end is saved, as it is within
+    moments on a settled phone (gm_pause_042 reads the same saved end)."""
     fresh_app(apk)
+    wait_for(service_running, 30)
+    broadcasts_idle()
     standard_call()
     dismiss_safe_word()
+    broadcasts_idle(60)
+    took = wait_for(lambda: saved_call_end().endswith(("ago", "paused")), 30)
     saved = saved_call_end()
+    measurements["Reboot check: hang-up to call end saved"] = f"{took:.0f} s" if took is not None else "never"
+    check(took is not None, f"Guardian never saved the unknown call's end (30 s after hang-up and the broadcast queue idle): {saved}; {diagnosis()}")
     adb("reboot", ok=False)
     time.sleep(10)
     wait_for_boot()

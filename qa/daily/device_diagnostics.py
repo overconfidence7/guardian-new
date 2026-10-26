@@ -81,14 +81,23 @@ def main():
     for cls, name, msg in rows:
         extra = traces.get(name, [])
         head = f"== {cls}.{name}: {msg}"[:400]
-        # The latest traces, as many as fit in about a third of the share.
+        # Traces a test marked with "!" (what the system did during a slow step) first, in
+        # order, in up to half the share; then the latest other traces, up to a third.
         trace, used = [], 0
-        for l in reversed([l for l in extra if l.startswith("trace")]):
+        for l in [l for l in extra if l.startswith("trace: !")]:
             l = "  " + l[:300]
-            if used + len(l) + 1 > budget // 3:
+            if used + len(l) + 1 > budget // 2:
                 break
-            trace.insert(0, l)
+            trace.append(l)
             used += len(l) + 1
+        pinned, latest = used, []
+        for l in reversed([l for l in extra if l.startswith("trace") and not l.startswith("trace: !")]):
+            l = "  " + l[:300]
+            if used - pinned + len(l) + 1 > budget // 3 or used + len(l) + 1 > budget * 2 // 3:
+                break
+            latest.insert(0, l)
+            used += len(l) + 1
+        trace += latest
         room = budget - len(head) - used - 4
         lines = [head]
         diag = [l for l in extra if l.startswith("diag")][-1:]

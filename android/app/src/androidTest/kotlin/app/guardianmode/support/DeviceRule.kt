@@ -73,6 +73,7 @@ class DeviceRule(
         shell("svc power stayon true")
         shell("settings put system screen_off_timeout 1800000")
         if (grantAll) grantEverything()
+        closeLeftoverApps()
         runCatching {
             val audio = context.getSystemService(AudioManager::class.java)
             audio.setStreamVolume(AudioManager.STREAM_RING, (audio.getStreamMaxVolume(AudioManager.STREAM_RING) * 5) / 7, 0)
@@ -190,6 +191,23 @@ class DeviceRule(
         ensureHomeResolves()
     }
 
+    /**
+     * Closes every app a test may have opened besides Guardian (the stand-ins, Settings, the
+     * package installer) so none of their windows outlive the test. A window left behind with
+     * its starting window stuck in a reveal animation makes every key and tap UiAutomator
+     * injects wait 5 s: before a synchronous injection Android waits for window animations to
+     * finish (WindowManagerService.syncInputTransactions -> waitForAnimationsToComplete, 5 s
+     * timeout). That was GM-PERF-002's 5.0 s Home presses on API 33, with "Timed out waiting
+     * for animations to complete, animatingContainer=Window{...} animationType=starting_reveal"
+     * right before each home START: a Coinbase stand-in window on daily run 40352114385,
+     * Settings' OverlaySettingsActivity on 40379840522. It also stretched whole device runs
+     * from about 70 minutes to 2.5-3 hours. The phone and dialer apps are left alone: closing
+     * them could break the next test's call.
+     */
+    private fun closeLeftoverApps() {
+        (StubApp.entries.map { it.packageName } + LEFTOVER_SYSTEM_APPS).forEach { shell("am force-stop $it") }
+    }
+
     /** What Home opens right now: a component, or the system's chooser when no home app is set. */
     fun homeResolvesTo(): String =
         shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME")
@@ -197,12 +215,14 @@ class DeviceRule(
 
     /**
      * Holding the Home role is what makes Home open Guardian. A test that takes the role away
-     * (gm_lock_041) or hands it to another launcher (gm_home_015) is followed by one that adds
-     * it back, and on API 33 that can leave the role held but no preferred home set: every Home
-     * press then shows Android's chooser and Guardian comes back only by itself 5 s later (the
-     * API 33 run of f42747b: GM-PERF-002 took 5026-5044 ms on all ten presses, the chooser,
-     * package "android", resumed between them). So this waits until Home resolves to Guardian
-     * and sets the home activity directly if the role alone didn't.
+     * (gm_lock_041, gm_pause_041) or hands it to another launcher (gm_home_015) is followed by
+     * one that adds it back, so this waits until Home resolves to Guardian and sets the home
+     * activity directly if the role alone didn't.
+     *
+     * It was added for GM-PERF-002's 5 s Home presses on API 33, read then as Android's home
+     * chooser ("android" resumed between presses). That "android" was Chase,
+     * com.chase.sig.android (see [shortPackage]); the real cause was a stand-in window stuck
+     * animating (see [closeLeftoverApps]).
      */
     private fun ensureHomeResolves() {
         if (waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) return
@@ -644,6 +664,14 @@ class DeviceRule(
         hideKeyboard()
         check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
         var matches = device.findObjects(selector)
+        // A node Compose has just replaced reads as not clickable (insideClickable can't walk
+        // it), which would send the scroll below away from a target already in view. Find
+        // stale matches again before deciding anything from them.
+        repeat(3) {
+            if (matches.none { isStale(it) }) return@repeat
+            device.waitForIdle(500)
+            matches = device.findObjects(selector)
+        }
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
         // A scroll must never lose the target. The Remote-control alarm switch reads as not
@@ -675,7 +703,9 @@ class DeviceRule(
                 if (attempt == 4) throw e
                 Log.w(TAG, "tap target went stale, finding it again: $selector")
                 device.waitForIdle(500)
-                val again = device.findObjects(selector)
+                // Gone from view (the page moved while it redrew, as in gm_scrn_006 on PR #12's
+                // API 36 run, where the switch ended up scrolled off): scroll it back first.
+                val again = device.findObjects(selector).ifEmpty { if (seen(selector, 1_000)) device.findObjects(selector) else emptyList() }
                 current = again.firstOrNull { insideClickable(it) } ?: again.firstOrNull() ?: throw e
                 return@repeat
             }
@@ -687,6 +717,9 @@ class DeviceRule(
 
     fun tap(text: String) = tapOn(By.text(text))
     fun tapDesc(desc: String) = tapOn(By.desc(desc))
+
+    private fun isStale(obj: UiObject2): Boolean =
+        runCatching { obj.visibleBounds }.exceptionOrNull() is androidx.test.uiautomator.StaleObjectException
 
     private fun insideClickable(obj: UiObject2): Boolean = runCatching {
         var node: UiObject2? = obj
@@ -915,6 +948,28 @@ class DeviceRule(
     /** Guardian's own log lines (this process), as `adb logcat --pid` would show them. */
     fun ownLogcat(): String = shell("logcat -d -v brief --pid=${Process.myPid()}")
 
+    /**
+     * What Android's window, activity and input services logged since [sinceMs] (wall clock),
+     * from the system and events buffers: activity starts, pauses and resumes, focus changes,
+     * dropped or late input. One entry per line, oldest first.
+     */
+    fun systemLog(sinceMs: Long, tags: Set<String> = SYSTEM_TAGS): List<String> {
+        val since = "${sinceMs / 1000}.${"%03d".format(sinceMs % 1000)}000000"
+        return shell("logcat -d -b system,events,main -v epoch -t $since").lines().mapNotNull { line ->
+            // "1793020064.522  1234  1250 I ActivityTaskManager: START u0 {...}"
+            val m = Regex("""^\s*(\d+)\.(\d{3})\d*\s+\d+\s+\d+\s+([VDIWEF])\s+([^:]+?)\s*:\s?(.*)$""").find(line) ?: return@mapNotNull null
+            val (sec, ms, level, tag, msg) = m.destructured
+            if (tags.none { tag == it || (it.endsWith("*") && tag.startsWith(it.dropLast(1))) }) return@mapNotNull null
+            val at = sec.toLong() * 1000 + ms.toLong() - sinceMs
+            "+${at}ms $level/$tag: ${msg.trim()}"
+        }
+    }
+
+    /** Where the system says input focus is: the focused window and the focused app. */
+    fun focusSummary(): String = shell("dumpsys window displays").lines()
+        .filter { "mCurrentFocus" in it || "mFocusedApp" in it }
+        .joinToString(" ") { it.trim() }
+
     /** What the test and Guardian see right now, on one line, for failure reports. */
     fun diagnostics(): String = buildString {
         val now = System.currentTimeMillis()
@@ -924,7 +979,7 @@ class DeviceRule(
         append("brain{${runCatching { GuardianReset.describe(container) }.getOrElse { "?$it" }}} ")
         append("shared=${sharedTypes()} paused=${state.isPaused(now)} lock=${state.config.lock.level}/${if (state.lockCodeHash.isEmpty()) "no code" else "code"} ")
         append("missing=${runCatching { container.capabilities.missing().map { it.key } }.getOrDefault(emptyList())} ")
-        append("resumedEvents=${recentResumes(30_000)} ")
+        append("resumedEvents=${recentResumes(30_000)} home=${runCatching { homeResolvesTo().substringAfterLast('.') }.getOrDefault("?")} ")
         val calls = runCatching { callLog(now - 120_000) }.getOrDefault(emptyList())
         append("calls=${calls.map { (n, t) -> "${n.takeLast(4)}/$t" }} ")
         if (calls.isEmpty()) {
@@ -998,6 +1053,13 @@ class DeviceRule(
         const val QUIET = 5_000L
         /** Time for a phone-state broadcast to reach the brain after the registry changes. */
         const val SETTLE = 1_000L
+        /** Android's own apps tests open (Settings screens, the uninstall confirmation); see closeLeftoverApps. */
+        val LEFTOVER_SYSTEM_APPS = listOf("com.android.settings", "com.android.packageinstaller", "com.google.android.packageinstaller")
+        /** System log tags that say how an activity switch went (see [systemLog]). */
+        val SYSTEM_TAGS = setOf(
+            "ActivityTaskManager", "ActivityManager", "WindowManager", "InputDispatcher", "PhoneWindowManager",
+            "wm_*", "am_pause_activity", "am_on_paused_called", "am_on_resume_called", "input_focus",
+        )
         /** The spec's bar for the pause card (bar 3) and the measured cases GM-PAUSE-040 / GM-PERF-003. */
         const val CARD_BAR_MS = 2_000L
         const val PAUSE_HEADLINE = "Hold on a minute."
