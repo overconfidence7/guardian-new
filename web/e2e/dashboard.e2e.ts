@@ -76,6 +76,6 @@ test('helper sets up a family, pairs the phone, edits settings and sees alerts',
 
   // 7. Family home shows the phone as connected with that alert.
   await page.getByRole('link', { name: 'Home' }).first().click();
-  await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mom’s phone', exact: true })).toBeVisible();
   await expect(page.getByText('Mom paused before opening Chase')).toBeVisible();
 });

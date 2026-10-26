@@ -67,7 +67,7 @@ async function joinAsPendingHelper(page: Page, family: Family, name: string): Pr
 test('GM-FAM-001 a returning helper who signs in lands on their family, not on "create a family"', async ({ page }) => {
   const family = await pairedFamily();
   await signIn(page, family.sarahEmail);
-  await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Mom’s phone', exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: /Welcome, Sarah/ })).toHaveCount(0);
 });
 
@@ -80,7 +80,9 @@ test('GM-FAM-020 GM-FAM-021 a second helper waits until the parent says yes on t
 
   await callFunction('approveHelper', family.phone.idToken, { familyId: family.familyId, uid: david.uid, approve: true });
   await expect(page.getByRole('heading', { name: 'You’re in!' })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toBeVisible({ timeout: 15_000 });
+  // Exact: the "David is now helping with Mom’s phone" event heading also contains the name,
+  // and shows up whenever the approval event arrives first (daily run 40352114385).
+  await expect(page.getByRole('heading', { name: 'Mom’s phone', exact: true })).toBeVisible({ timeout: 15_000 });
 });
 
 test('GM-FAM-021 GM-SCAM-007 a pending helper opening the family page gets nothing', async ({ page }) => {
@@ -138,9 +140,9 @@ test('GM-FAM-060 the dashboard shows the phone gone after "Stop using Guardian M
   const family = await pairedFamily();
   await signIn(page, family.sarahEmail);
   await page.goto(`/f/${family.familyId}`);
-  await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Mom’s phone', exact: true })).toBeVisible({ timeout: 15_000 });
   await callFunction('deleteDevice', family.phone.idToken, { familyId: family.familyId, deviceId: family.deviceId });
-  await expect(page.getByRole('heading', { name: 'Mom’s phone' })).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Mom’s phone', exact: true })).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByText('No phones yet')).toBeVisible();
 });
 
