@@ -73,7 +73,7 @@ class DeviceRule(
         shell("svc power stayon true")
         shell("settings put system screen_off_timeout 1800000")
         if (grantAll) grantEverything()
-        closeStandIns()
+        closeLeftoverApps()
         runCatching {
             val audio = context.getSystemService(AudioManager::class.java)
             audio.setStreamVolume(AudioManager.STREAM_RING, (audio.getStreamMaxVolume(AudioManager.STREAM_RING) * 5) / 7, 0)
@@ -192,17 +192,20 @@ class DeviceRule(
     }
 
     /**
-     * Closes every stand-in app so none of their windows outlive the test that opened them.
-     * A stand-in window left behind with its starting window stuck in a reveal animation
-     * makes every key and tap UiAutomator injects wait 5 s: before a synchronous injection
-     * Android waits for window animations to finish (WindowManagerService
-     * .syncInputTransactions -> waitForAnimationsToComplete, 5 s timeout). That was GM-PERF-002's
-     * 5.0 s Home presses on API 33 (daily run 40352114385: "Timed out waiting for animations
-     * to complete, animatingContainer=Window{... com.coinbase.android/...StubActivity}
-     * animationType=starting_reveal" right before each home START).
+     * Closes every app a test may have opened besides Guardian (the stand-ins, Settings, the
+     * package installer) so none of their windows outlive the test. A window left behind with
+     * its starting window stuck in a reveal animation makes every key and tap UiAutomator
+     * injects wait 5 s: before a synchronous injection Android waits for window animations to
+     * finish (WindowManagerService.syncInputTransactions -> waitForAnimationsToComplete, 5 s
+     * timeout). That was GM-PERF-002's 5.0 s Home presses on API 33, with "Timed out waiting
+     * for animations to complete, animatingContainer=Window{...} animationType=starting_reveal"
+     * right before each home START: a Coinbase stand-in window on daily run 40352114385,
+     * Settings' OverlaySettingsActivity on 40379840522. It also stretched whole device runs
+     * from about 70 minutes to 2.5-3 hours. The phone and dialer apps are left alone: closing
+     * them could break the next test's call.
      */
-    private fun closeStandIns() {
-        StubApp.entries.forEach { shell("am force-stop ${it.packageName}") }
+    private fun closeLeftoverApps() {
+        (StubApp.entries.map { it.packageName } + LEFTOVER_SYSTEM_APPS).forEach { shell("am force-stop $it") }
     }
 
     /** What Home opens right now: a component, or the system's chooser when no home app is set. */
@@ -219,7 +222,7 @@ class DeviceRule(
      * It was added for GM-PERF-002's 5 s Home presses on API 33, read then as Android's home
      * chooser ("android" resumed between presses). That "android" was Chase,
      * com.chase.sig.android (see [shortPackage]); the real cause was a stand-in window stuck
-     * animating (see [closeStandIns]).
+     * animating (see [closeLeftoverApps]).
      */
     private fun ensureHomeResolves() {
         if (waitUntil(3_000) { homeResolvesTo().startsWith("$pkg/") }) return
@@ -1050,6 +1053,8 @@ class DeviceRule(
         const val QUIET = 5_000L
         /** Time for a phone-state broadcast to reach the brain after the registry changes. */
         const val SETTLE = 1_000L
+        /** Android's own apps tests open (Settings screens, the uninstall confirmation); see closeLeftoverApps. */
+        val LEFTOVER_SYSTEM_APPS = listOf("com.android.settings", "com.android.packageinstaller", "com.google.android.packageinstaller")
         /** System log tags that say how an activity switch went (see [systemLog]). */
         val SYSTEM_TAGS = setOf(
             "ActivityTaskManager", "ActivityManager", "WindowManager", "InputDispatcher", "PhoneWindowManager",

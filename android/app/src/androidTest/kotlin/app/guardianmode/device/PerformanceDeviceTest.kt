@@ -91,7 +91,7 @@ class PerformanceDeviceTest {
      * the annotation ahead of other traces, qa/daily/device_diagnostics.py):
      * where Home resolves, where input focus is, and what the activity, window and input
      * services logged between the press and Guardian's resume. It is how the 5.0 s presses on
-     * API 33 were traced to a stand-in window stuck animating (DeviceRule.closeStandIns).
+     * API 33 were traced to a stand-in window stuck animating (DeviceRule.closeLeftoverApps).
      */
     private fun traceSlowSwitch(start: Long, took: Long) {
         // "!" lines are kept in the CI annotation ahead of the later "opening Chase" traces.
