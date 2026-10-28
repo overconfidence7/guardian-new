@@ -765,12 +765,33 @@ class DeviceRule(
      */
     private fun scrollOnce(direction: Direction): Boolean {
         val scrollable = runCatching { device.findObject(By.pkg(pkg).scrollable(true)) }.getOrNull() ?: return false
+        val before = screenSignature()
         val more = runCatching { scrollable.scroll(direction, 0.6f) }
             .onFailure { Log.w(TAG, "scroll $direction threw $it") }
             .getOrDefault(false)
         device.waitForIdle(500)
-        return more
+        if (more) return true
+        // UiObject2.scroll says false both at the end of the page and when its gesture didn't
+        // move the page at all. The second happened on API 33 (gm_racc_014 and gm_tran_004,
+        // run 40499169320): "not seen after 0 scroll moves" with the switch just below the
+        // fold. So when nothing on screen changed, a finger swipe gets one more try.
+        if (screenSignature() != before) return false
+        val bounds = runCatching { scrollable.visibleBounds }.getOrNull() ?: return false
+        val x = bounds.centerX()
+        val high = bounds.top + bounds.height() / 5
+        val low = bounds.bottom - bounds.height() / 5
+        if (direction == Direction.DOWN) device.swipe(x, low, x, high, 30) else device.swipe(x, high, x, low, 30)
+        device.waitForIdle(500)
+        val moved = screenSignature() != before
+        if (moved) Log.w(TAG, "scroll $direction: UiObject2.scroll didn't move the page, a swipe did")
+        return moved
     }
+
+    /** What of Guardian's is on screen and where, to tell whether a scroll moved anything. */
+    private fun screenSignature(): List<String> =
+        runCatching { device.findObjects(By.pkg(pkg)) }.getOrDefault(emptyList()).mapNotNull { o ->
+            runCatching { "${o.text ?: o.contentDescription ?: ""}@${o.visibleBounds.top}" }.getOrNull()
+        }
 
     /**
      * Whether the switch described as [desc] shows on, read from the accessibility tree:
