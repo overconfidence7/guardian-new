@@ -56,15 +56,36 @@ def sh(command: str, timeout: int = 60) -> str:
     return adb("shell", command, timeout=timeout, ok=False)
 
 
-def wait_for_boot(timeout: int = 300) -> None:
+def wait_for_boot(timeout: int = 300) -> float:
+    """Waits for the boot to finish, then 5 s more. Returns the host time at which
+    sys.boot_completed was first seen, so timings can start from the boot itself."""
     adb("wait-for-device", timeout=timeout)
     end = time.time() + timeout
     while time.time() < end:
         if sh("getprop sys.boot_completed").strip() == "1":
+            completed = time.time()
             time.sleep(5)
-            return
+            return completed
         time.sleep(2)
     raise CheckFailed("emulator didn't finish booting")
+
+
+def boot_id() -> str:
+    """Changes on every boot of the phone."""
+    return sh("cat /proc/sys/kernel/random/boot_id").strip()
+
+
+def reboot() -> float:
+    """Reboots the phone and waits for the boot to finish. Fails if the phone didn't really
+    reboot: `adb reboot` can return without rebooting, and a check that then finds Guardian
+    running would pass without testing anything. Returns when boot_completed was seen."""
+    before = boot_id()
+    adb("reboot", ok=False)
+    time.sleep(10)
+    completed = wait_for_boot()
+    after = boot_id()
+    check(after != "" and after != before, f"the phone didn't reboot (boot id {before!r} before, {after!r} after)")
+    return completed
 
 
 def keyguard_showing() -> bool:
@@ -178,7 +199,11 @@ def fresh_app(apk: str) -> None:
 
 
 def service_running() -> bool:
-    return "ServiceRecord" in sh(f"dumpsys activity services {SERVICE}")
+    """The service exists and has a process. A sticky service whose process was killed keeps
+    its ServiceRecord while Android waits to restart it, listed with app=null (and under
+    "Restarting services"), so a record alone doesn't mean it runs."""
+    out = sh(f"dumpsys activity services {SERVICE}")
+    return "ServiceRecord" in out and "app=null" not in out and "Restarting ServiceRecord" not in out
 
 
 def wait_for(predicate, timeout: float, interval: float = 1.0) -> float | None:
@@ -347,12 +372,12 @@ def survives_reboot(apk: str, **_) -> None:
     """GM-SVC-006: the service is back after a reboot without opening anything."""
     fresh_app(apk)
     check(wait_for(service_running, 30) is not None, "service never started before the reboot")
-    adb("reboot", ok=False)
-    time.sleep(10)
-    wait_for_boot()
+    completed = reboot()
     took = wait_for(service_running, 90)
-    measurements["Reboot: boot to service running"] = f"{took:.0f} s" if took is not None else "never"
-    check(took is not None, "GuardianService didn't come back within 90 s of boot")
+    # Counted from boot_completed, not from after reboot()'s 5 s settle.
+    since_boot = time.time() - completed if took is not None else None
+    measurements["Reboot: boot to service running"] = f"{since_boot:.0f} s" if since_boot is not None else "never"
+    check(took is not None, f"GuardianService didn't come back within 90 s of boot ({diagnosis()})")
     wake()
 
 
@@ -387,9 +412,7 @@ def pause_card_after_reboot(apk: str, **_) -> None:
     saved = saved_call_end()
     measurements["Reboot check: hang-up to call end saved"] = f"{took:.0f} s" if took is not None else "never"
     check(took is not None, f"Guardian never saved the unknown call's end (30 s after hang-up and the broadcast queue idle): {saved}; {diagnosis()}")
-    adb("reboot", ok=False)
-    time.sleep(10)
-    wait_for_boot()
+    reboot()
     wake()
     wait_for(service_running, 60)
     before = diagnosis()
@@ -433,10 +456,23 @@ def force_stop_then_home(apk: str, **_) -> None:
 
 
 def killed_after_call(apk: str, **_) -> None:
-    """GM-PAUSE-042: Android kills Guardian in the background after the call."""
+    """GM-PAUSE-042: Android kills Guardian in the background after the call.
+
+    What this tests is that the call's end survives the process dying. So, like
+    gm_pause_043, it waits for the broadcast queue before the call and for the saved end
+    before the kill (it runs right after the Doze check's call, and a PHONE_STATE broadcast
+    can still be queued then), makes sure the kill happened, and waits for Android to
+    restart the service before opening Chase. Each step that doesn't happen fails saying
+    which, with what the phone looked like."""
     fresh_app(apk)
+    wait_for(service_running, 30)
+    broadcasts_idle()
     standard_call()
     dismiss_safe_word()
+    broadcasts_idle(60)
+    saved_in = wait_for(lambda: saved_call_end().endswith(("ago", "paused")), 30)
+    saved = saved_call_end()
+    check(saved_in is not None, f"Guardian never saved the unknown call's end (30 s after hang-up and the broadcast queue idle): {saved}; {diagnosis()}")
     open_app(NOTES)
     time.sleep(2)
     adb("root", ok=False)
@@ -444,9 +480,13 @@ def killed_after_call(apk: str, **_) -> None:
     adb("wait-for-device")
     pid = sh(f"pidof {PKG}").strip()
     check(pid != "", "Guardian's process wasn't running to kill")
-    sh(f"kill -9 {pid}")
-    time.sleep(5)
-    check(pause_card_after_open(), "no pause card for Chase after Android killed Guardian's process post-call")
+    out = sh(f"kill -9 {pid}").strip()
+    check(wait_for(lambda: sh(f"pidof {PKG}").strip() != pid, 10) is not None, f"kill -9 {pid} didn't end Guardian's process ({out or 'no output'})")
+    back = wait_for(service_running, 60)
+    measurements["Process killed: kill to service running"] = f"{back:.0f} s" if back is not None else "never"
+    check(back is not None, f"Android didn't restart GuardianService within 60 s of the kill ({diagnosis()})")
+    after = diagnosis()
+    check(pause_card_after_open(), f"no pause card for Chase after Android killed Guardian's process post-call (call end before kill: {saved}; service back after {back:.0f} s: {after}; now: {diagnosis()})")
 
 
 def doze_call(apk: str, **_) -> None:
@@ -511,9 +551,13 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001 - every check is isolated
             failures += 1
             tag = "failure" if isinstance(e, CheckFailed) else "error"
-            el = ET.SubElement(case, tag, message=str(e)[:500])
+            el = ET.SubElement(case, tag, message=str(e)[:1500])
             el.text = traceback.format_exc()
             print(f"FAIL {name}: {e}")
+            # The report keeps 240 characters of the message and the job log can't be read
+            # through the API, so the whole message goes out as an annotation too.
+            text = str(e)[:3500].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+            print(f"::error title={args.suite} {name}::{text}")
         case.set("time", f"{time.time() - start:.1f}")
     suite.set("tests", str(len(suite)))
     suite.set("failures", str(failures))

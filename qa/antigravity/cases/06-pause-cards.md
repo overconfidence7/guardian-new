@@ -127,7 +127,7 @@ Suspect S-03. **Steps:** level Guided, locked. Pull down the shade and tap "Paus
 **Expect:** with the home role: the card still appears (home apps may start activities). Without either: a high-priority notification "Hold on a minute" / "Did someone on the phone ask you to open Chase? Tap to talk it over with family first." that opens the card when tapped. Record exactly what the parent sees, and whether it's full screen (needs the full-screen permission) or a banner.
 
 ### GM-PAUSE-042 · Process killed after the call  `P0`
-**Steps:** standard unknown call. Then `adb shell am kill app.guardianmode.debug` (it's in the background behind Notes), wait 5 s, open Chase. Repeat with `am force-stop` and with the emulator's low-memory killer (`adb shell am send-trim-memory app.guardianmode.debug RUNNING_CRITICAL`, then open heavy apps).
+**Steps:** standard unknown call; wait until Guardian has saved the call's end (as in 043). Then `adb shell am kill app.guardianmode.debug` (it's in the background behind Notes), check the process really ended, wait until Android has restarted the service (a killed sticky service is listed with `app=null` until then), open Chase. Repeat with `am force-stop` and with the emulator's low-memory killer (`adb shell am send-trim-memory app.guardianmode.debug RUNNING_CRITICAL`, then open heavy apps).
 **Expect (per spec):** the card still appears within the 30 minutes. The rule state lives in memory (`TripwireEngine`), so a killed process may forget the call. Record what happens in each case; if a killed process means no card, it's a P0 on budget phones where Android kills background apps often.
 
 ### GM-PAUSE-043 · Reboot after the call  `P1`
