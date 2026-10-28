@@ -1,12 +1,5 @@
 {
   "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
-  "BOOT-API29": {
-    "title": "On Android 10 the service isn't back within 90 s of a restart (fine on Android 16); BOOT_COMPLETED start in Receivers.kt:31",
-    "owner": "unassigned",
-    "tests": [
-      "gm_svc_006_survivesReboot"
-    ]
-  },
   "HOME-MEMORY": {
     "title": "Home screen uses 170-210 MB (PSS) against the 150 MB budget in GM-PERF-007",
     "owner": "unassigned",
