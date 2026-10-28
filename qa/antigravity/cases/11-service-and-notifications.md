@@ -20,7 +20,7 @@
 **Expect:** pauses (notification switches to "Guardian Mode is paused" with "Turn back on"). See suspect S-03 about the lock code and S-05 about the text afterwards.
 
 ### GM-SVC-006 · Survives reboot  `P0`
-**Steps:** reboot the emulator (`adb reboot`), unlock.
+**Steps:** reboot the emulator (`adb reboot`; check `/proc/sys/kernel/random/boot_id` changed, so it really rebooted), unlock.
 **Expect:** the notification is back within a minute of boot (BootReceiver), before the parent opens anything. Pause cards work (standard call + Chase). Record the time from unlock to notification.
 
 ### GM-SVC-007 · Survives an app update  `P0`
