@@ -80,12 +80,29 @@ def reboot() -> float:
     reboot: `adb reboot` can return without rebooting, and a check that then finds Guardian
     running would pass without testing anything. Returns when boot_completed was seen."""
     before = boot_id()
+    if sdk() < 30:
+        # Android 10 writes package state (an app's stopped flag, the preferred home app)
+        # about 10 s after it changes and drops a pending write on shutdown; Android 11 added
+        # the flush. Rebooting sooner after fresh_app boots into a Guardian that is stopped
+        # again (so it never gets BOOT_COMPLETED) behind the home chooser: BOOT-API29 on
+        # 2026-10-27. A phone isn't set up and restarted inside 10 s, so wait it out.
+        time.sleep(15)
     adb("reboot", ok=False)
     time.sleep(10)
     completed = wait_for_boot()
     after = boot_id()
     check(after != "" and after != before, f"the phone didn't reboot (boot id {before!r} before, {after!r} after)")
     return completed
+
+
+def sdk() -> int:
+    return int(sh("getprop ro.build.version.sdk").strip() or "0")
+
+
+def app_stopped() -> bool:
+    """Android's stopped flag for Guardian: set by install and force-stop, cleared by the
+    first launch. A stopped app gets no broadcasts, BOOT_COMPLETED included."""
+    return "stopped=true" in sh(f"dumpsys package {PKG}")
 
 
 def keyguard_showing() -> bool:
@@ -377,7 +394,7 @@ def survives_reboot(apk: str, **_) -> None:
     # Counted from boot_completed, not from after reboot()'s 5 s settle.
     since_boot = time.time() - completed if took is not None else None
     measurements["Reboot: boot to service running"] = f"{since_boot:.0f} s" if since_boot is not None else "never"
-    check(took is not None, f"GuardianService didn't come back within 90 s of boot ({diagnosis()})")
+    check(took is not None, f"GuardianService didn't come back within 90 s of boot ({diagnosis()} stopped={app_stopped()} home={home_holders()})")
     wake()
 
 
