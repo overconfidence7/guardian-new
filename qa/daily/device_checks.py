@@ -475,6 +475,8 @@ def pause_card_after_reboot(apk: str, **_) -> None:
     wait_for(service_running, 60)
     before = f"{diagnosis()} pid={guardian_pid() or 'none'}"
     shown = pause_card_after_open()
+    note = f"shown={shown} saved={saved} after boot: {before}; open: {'; '.join(open_notes)}; now pid={guardian_pid()}; exit: {last_exit()}; log: {guardian_log()}"
+    print("::notice title=diag043::" + note.replace("%", "%25").replace("\n", "%0A")[:3500])
     if not shown:
         raise CheckFailed(
             f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (call end before reboot: {saved}; "
