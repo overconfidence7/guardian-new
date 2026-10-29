@@ -158,6 +158,37 @@ def saved_call_end() -> str:
     return f"{(now_ms - ended) // 1000}s ago" + (" paused" if state.get("pausedUntil", 0) > now_ms else "")
 
 
+def guardian_pid() -> str:
+    return sh(f"pidof {PKG}").strip()
+
+
+def card_activity_up() -> bool:
+    """A card activity exists, whether or not a UI dump could read it (cards are FLAG_SECURE)."""
+    return "GuardianCardActivity" in sh("dumpsys activity activities")
+
+
+def last_exit() -> str:
+    """Why Guardian's last process ended, as Android recorded it (API 30+)."""
+    out = sh(f"dumpsys activity exit-info {PKG}")
+    first = out.split("ApplicationExitInfo #1")[0]
+    fields = []
+    for key in ("timestamp", "pid", "reason", "description"):
+        m = re.search(rf"\b{key}=(.*?)(?= \w+=|$)", first, re.M)
+        if m:
+            fields.append(f"{key}={m.group(1).strip()[:120]}")
+    return " ".join(fields) or "none recorded"
+
+
+def guardian_log(limit: int = 8) -> str:
+    """The system's lines about Guardian's process and its activity starts since boot: deaths,
+    crashes, ANRs and blocked background starts."""
+    out = sh("logcat -d -v time -b main,system,crash", timeout=60)
+    death = re.compile(rf"{re.escape(PKG)}.*(Kill|has died|ANR|FATAL|[Bb]ackground activity|Abort background|Scheduling restart)|FATAL EXCEPTION")
+    card = re.compile(r"ActivityTaskManager.*(START u0 .*GuardianCardActivity|Displayed .*GuardianCardActivity)")
+    lines = [line.strip()[:200] for line in out.splitlines() if death.search(line) or card.search(line)]
+    return " | ".join(lines[-limit:]) or "nothing"
+
+
 def diagnosis() -> str:
     """What the phone and Guardian look like right now, for a failure message (kept short:
     an annotation holds 4 KB)."""
@@ -292,17 +323,25 @@ def pause_card_within(seconds: float = 5) -> bool:
     return wait_text("Hold on a minute.", seconds)
 
 
+# What the last pause_card_after_open saw on each try, for a failure message: its prints
+# only reach the job log, which can't be read through the API.
+open_notes: list[str] = []
+
+
 def pause_card_after_open(package: str = CHASE) -> bool:
     """Opens the app and waits for the card. An app that never came to the front (the lock
     screen still up, a start dropped while the phone is busy) is opened again after a wake,
     since no card can be expected for an app that wasn't opened."""
     shown = False
+    open_notes.clear()
     for attempt in range(2):
         open_app(package)
         shown = pause_card_within(8)
         if shown:
             break
         top = top_activity()
+        note = f"try {attempt + 1}: top={top.split('/')[-1]} pid={guardian_pid() or 'none'} cardActivity={card_activity_up()}"
+        open_notes.append(note)
         if package in top:
             print(f"  {package} is in front and no card came: {diagnosis()}")
             break
@@ -432,8 +471,14 @@ def pause_card_after_reboot(apk: str, **_) -> None:
     reboot()
     wake()
     wait_for(service_running, 60)
-    before = diagnosis()
-    check(pause_card_after_open(), f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (call end before reboot: {saved}; after boot: {before}; now: {diagnosis()})")
+    before = f"{diagnosis()} pid={guardian_pid() or 'none'}"
+    shown = pause_card_after_open()
+    if not shown:
+        raise CheckFailed(
+            f"no pause card for Chase after an unknown call and a reboot inside the 30-minute window (call end before reboot: {saved}; "
+            f"after boot: {before}; opening Chase: {'; '.join(open_notes)}; now: {diagnosis()} pid={guardian_pid() or 'none'}; "
+            f"last exit: {last_exit()}; log: {guardian_log()})"
+        )
 
 
 def survives_update(apk: str, **_) -> None:
