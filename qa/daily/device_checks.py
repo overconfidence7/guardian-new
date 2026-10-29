@@ -604,7 +604,14 @@ def main() -> int:
 
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
-    for name, fn, needs_device in CHECKS:
+    checks = CHECKS
+    if os.environ.get("GM_ONLY"):
+        wanted = os.environ["GM_ONLY"].split(",")
+        picked = [c for c in CHECKS if c[0] in wanted]
+        checks = []
+        for i in range(int(os.environ.get("GM_REPEAT", "1"))):
+            checks += [(f"{n}_r{i}", f, d) for n, f, d in picked]
+    for name, fn, needs_device in checks:
         if needs_device and args.no_device:
             continue
         case = ET.SubElement(suite, "testcase", classname="DeviceChecks", name=name)

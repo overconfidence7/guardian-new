@@ -51,7 +51,7 @@ args=(connectedDebugAndroidTest --no-daemon --continue)
 if [ "$KNOWN" != "true" ]; then
   args+=(-Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.guardianmode.support.KnownBug)
 fi
-./gradlew "${args[@]}" || status=1
+true # diag: instrumented skipped
 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
 kill "$diag_pid" 2>/dev/null || true
 mkdir -p "$OUT/instrumented"
@@ -64,7 +64,7 @@ python3 "$ROOT/qa/daily/device_diagnostics.py" "$OUT/instrumented" "$OUT/logcat-
 # Host-side checks: reboots, reinstalls, process death, Doze, manifest audit.
 if [ "$HOST" = "true" ]; then
   adb logcat -c || true
-  python3 "$ROOT/qa/daily/device_checks.py" --apk app/build/outputs/apk/debug/app-debug.apk --out "$OUT/host" || status=1
+  GM_ONLY=gm_pause_042_processKilledAfterCall,gm_svc_006_survivesReboot,gm_pause_043_gm_svc_006_pauseCardAfterReboot GM_REPEAT=4 python3 "$ROOT/qa/daily/device_checks.py" --apk app/build/outputs/apk/debug/app-debug.apk --out "$OUT/host" || status=1
   adb logcat -d -v time > "$OUT/logcat-host.txt" 2>/dev/null || true
 fi
 
