@@ -183,11 +183,9 @@ def guardian_log(limit: int = 8) -> str:
     """The system's lines about Guardian's process and its activity starts since boot: deaths,
     crashes, ANRs and blocked background starts."""
     out = sh("logcat -d -v time -b main,system,crash", timeout=60)
-    pattern = re.compile(
-        rf"({re.escape(PKG)}.*(Kill|died|ANR|crash|FATAL|[Bb]ackground activity|BAL|Abort|Start proc|Restart))"
-        rf"|(GuardianCardActivity)|(AndroidRuntime.*{re.escape(PKG)})|(FATAL EXCEPTION)"
-    )
-    lines = [line.strip()[:200] for line in out.splitlines() if pattern.search(line)]
+    death = re.compile(rf"{re.escape(PKG)}.*(Kill|has died|ANR|FATAL|[Bb]ackground activity|Abort background|Scheduling restart)|FATAL EXCEPTION")
+    card = re.compile(r"ActivityTaskManager.*(START u0 .*GuardianCardActivity|Displayed .*GuardianCardActivity)")
+    lines = [line.strip()[:200] for line in out.splitlines() if death.search(line) or card.search(line)]
     return " | ".join(lines[-limit:]) or "nothing"
 
 
