@@ -353,8 +353,16 @@ def open_app(package: str) -> None:
     sh(f"monkey -p {package} -c android.intent.category.LAUNCHER 1")
 
 
-def pause_card_within(seconds: float = 5) -> bool:
-    return wait_text("Hold on a minute.", seconds)
+def pause_card_within(seconds: float = 5, card_before: bool = False) -> bool:
+    """The pause card's headline on screen, or, when a UI dump can't read the window, the
+    card activity itself in front. The 10-30 API 36 branch run (41079010624) had the card
+    displayed 1.7 s after Chase opened (ActivityTaskManager "Displayed ...GuardianCardActivity")
+    while 8 s of dumps never read its text. Only a pause card can show in these checks: none
+    of them sets a lock level. A card that was already up before the app opened (a safe-word
+    card left over) doesn't count."""
+    def up() -> bool:
+        return find_text("Hold on a minute.") is not None or (not card_before and top_activity().endswith("GuardianCardActivity"))
+    return wait_for(up, seconds, interval=0.5) is not None
 
 
 # What the last pause_card_after_open saw on each try, for a failure message: its prints
@@ -369,8 +377,9 @@ def pause_card_after_open(package: str = CHASE) -> bool:
     shown = False
     open_notes.clear()
     for attempt in range(2):
+        before = card_activity_up()
         open_app(package)
-        shown = pause_card_within(8)
+        shown = pause_card_within(8, card_before=before)
         if shown:
             break
         top = top_activity()
