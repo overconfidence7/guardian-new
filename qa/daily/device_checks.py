@@ -837,6 +837,10 @@ def main() -> int:
             text = str(e)[:3500].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
             print(f"::error title={args.suite} {name}::{text}")
         case.set("time", f"{time.time() - start:.1f}")
+    # Which checks passed and what they measured, readable through the API like the failures.
+    passed = [c.get("name") for c in suite if len(c) == 0]
+    summary = f"passed: {', '.join(passed) or 'none'}; " + "; ".join(f"{k}: {v}" for k, v in measurements.items() if "Permissions not named" not in k and "library" not in k)
+    print(f"::notice title={args.suite} summary::{summary[:3500].replace('%', '%25').replace(chr(10), '%0A')}")
     suite.set("tests", str(len(suite)))
     suite.set("failures", str(failures))
     ET.ElementTree(suite).write(out / f"TEST-{args.suite}.xml", encoding="utf-8", xml_declaration=True)

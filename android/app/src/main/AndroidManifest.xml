@@ -133,11 +133,14 @@
             android:screenOrientation="portrait"
             tools:ignore="DiscouragedApi,LockedOrientationActivity" />
 
-        <!-- "Share" from Google Photos, Amazon Photos, the gallery or any app adds pictures to the photo card. -->
+        <!-- "Share" from Google Photos, Amazon Photos, the gallery or any app adds pictures to the photo card.
+             No task affinity: an app that shares with FLAG_ACTIVITY_NEW_TASK would otherwise land it
+             beside the home screen, and "Back to the other app" would go home (GM-PHOTO-003). -->
         <activity
             android:name=".ui.home.SharePhotosActivity"
             android:exported="true"
             android:label="@string/share_to_photo_card"
+            android:taskAffinity=""
             android:excludeFromRecents="true"
             android:screenOrientation="portrait"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
