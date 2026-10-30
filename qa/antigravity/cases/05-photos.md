@@ -14,6 +14,7 @@ Put test images on the emulator first: `adb push <file> /sdcard/Pictures/` then 
 ### GM-PHOTO-003 · Share one picture from another app  `P0` `[AVD]` `[PHONE]`
 **Steps:** in Google Photos (or the Files app / gallery on the emulator), open a picture, Share, pick "Add to photo card" (record the exact label and icon in the share sheet).
 **Expect:** "Adding your photos", then "Added to your photo card" and "The picture is on your home screen now.", with "Go to my home screen" and "Back to the other app". Both buttons do what they say. The home screen shows the picture. On the real phone, also try Amazon Photos if installed (ask Nate).
+**In the cloud:** `PhotoDeviceTest.gm_photo_003_shareOnePictureFromAnotherApp` checks the share-sheet entry is "Add to photo card", shares a gallery picture (a MediaStore content URI with a read grant) with the Notes stand-in in front, then checks both buttons and the photo card. The emulators have no Google Photos; the entry's icon resource is logged.
 
 ### GM-PHOTO-004 · Share several  `P1`
 **Steps:** select 5 pictures, Share, "Add to photo card".
@@ -37,6 +38,7 @@ Put test images on the emulator first: `adb push <file> /sdcard/Pictures/` then 
 ### GM-PHOTO-009 · Photos survive restarts and app updates  `P0`
 **Steps:** add photos, force-stop, reopen; reboot; install the same APK again with `adb install -r`.
 **Expect:** all photos still there and showing.
+**In the cloud:** `device_checks.py` `gm_photo_009_photosSurviveRestartUpdateAndReboot` (API 29 and 36) puts a one-colour picture where the importer leaves one, then after a force stop, `adb install -r` and a reboot checks the saved entry, the file, and that the photo card's pixels are the picture's colour.
 
 ### GM-PHOTO-010 · Photo source permission runs out  `P2`
 **Steps:** share from Google Photos, then clear Google Photos' data or uninstall it.
