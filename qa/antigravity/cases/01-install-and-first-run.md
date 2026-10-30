@@ -3,8 +3,9 @@
 Start each case from a fresh install (`adb shell pm clear app.guardianmode.debug` or uninstall and reinstall) unless it says otherwise.
 
 ### GM-INST-001 · Installs and opens on every device  `P0` `[AVD]` `[PHONE]`
-**Steps:** install the test APK. Open it from the app drawer. It should be labelled "Guardian Mode" (`docs/TESTING.md` calls it "Guardian Mode debug"; record the real label so the doc can be fixed).
+**Steps:** install the test APK. Open it from the app drawer. It should be labelled "Guardian Mode" (the debug build uses the same label as release).
 **Expect:** opens within 3 seconds on `gm-api36`, within 5 on `gm-api29-budget`. No crash dialog. First screen is the role choice (GM-INST-002). Record cold start time with `adb shell am start -W -n app.guardianmode.debug/app.guardianmode.ui.MainActivity` (TotalTime).
+**In the cloud:** `device_checks.py` `gm_inst_001_installsAndOpensOnTheRoleChoice` (API 29 and 36) installs without granting anything, opens the launcher entry with `am start -W`, checks the role choice comes up with no crash, and times the first open and a cold start after a force stop (both in the report's measurements; the bar applies to the cold start). `PrivacyDeviceTest.gm_priv_022_gm_inst_001_...` checks the launcher label is "Guardian Mode" on all three levels.
 
 ### GM-INST-002 · Role choice screen  `P0` `[AVD]`
 **Expect:** a shield icon, the heading "How will this phone be used?", the line "Guardian Mode goes on the phone that should be simpler. Family who help can use it on their own phone too.", a primary button "Make this phone simpler" with "For the person who will use this phone every day. You can set it up for them." under it, and a secondary button "Help someone else's phone" with "For family who help from their own phone." Nothing on screen says "monitor", "track" or "watch". Screenshot at default font size and at system font scale 2.0 (no text cut off; the page scrolls).

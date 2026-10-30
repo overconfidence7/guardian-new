@@ -61,9 +61,11 @@ Take each line of "Never shared" on the transparency screen and each "Never shar
 
 ### GM-PRIV-022 · Visible and stoppable  `P0`
 **Expect:** while protection runs there's always the notification (GM-SVC-001) and the parent can stop protection (pause, switches, Stop using, Android's Active apps). Guardian has its own icon in the launcher list. Nothing hides the app.
+**In the cloud:** `PrivacyDeviceTest.gm_priv_022_gm_inst_001_visibleInLauncherAndShadeAndStoppable`: one launcher entry with Guardian's name and icon (as `LauncherApps` lists it), a foreground service with an ongoing notification on a channel that isn't off and its "Pause for 1 hour" button, and "Stop using Guardian Mode" on the transparency screen. Stopping from "Active apps" is GM-SVC-003.
 
 ### GM-PRIV-023 · No banned capabilities in practice  `P0`
 **Expect:** across the whole run, Guardian never asks for or uses Accessibility, SMS, call log or location. Check `adb shell dumpsys package app.guardianmode.debug` for requested and granted permissions at the end of the run and `appops get` for any op it touched. Report the full list.
+**In the cloud:** `device_checks.py` `gm_priv_023_noBannedCapabilitiesInPractice` (API 29 and 36), after setup, an unknown call and a pause card: no banned permission requested or granted, no banned app op used or refused, not an enabled accessibility service. The report's measurements list the requested and granted permissions and every app op used.
 
 ### GM-PRIV-024 · The word "monitor" and friends  `P0`
 **Steps:** search every user-visible string: `git grep -n -i -E "monitor|track|spy|surveil|watch(es|ing)? (you|mom|dad)" -- android/app/src/main web/src/screens web/src/components firebase/functions/src/copy.ts`, and look at every screen you screenshot.

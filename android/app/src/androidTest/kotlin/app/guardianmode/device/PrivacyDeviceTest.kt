@@ -1,12 +1,18 @@
 package app.guardianmode.device
 
+import android.app.ActivityManager
+import android.app.Notification
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Process
 import android.provider.MediaStore
 import android.system.Os
 import android.util.Log
@@ -175,6 +181,51 @@ class PrivacyDeviceTest {
         } finally {
             uris.forEach { runCatching { resolver.delete(it, null, null) } }
         }
+    }
+
+    /**
+     * Guardian can't hide: it has its own launcher entry under its own name and icon, the
+     * service runs in the foreground (so Android lists it under "Active apps" on API 33+ and
+     * lets the parent stop it there), the notification is up and can't be swiped away, and it
+     * offers a pause right there. "Stop using Guardian Mode" is on the transparency screen.
+     * (Stopping from "Active apps" itself ends the app, so that part stays with GM-SVC-003.)
+     */
+    @Test fun gm_priv_022_gm_inst_001_visibleInLauncherAndShadeAndStoppable() {
+        val pm = rule.context.packageManager
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(rule.pkg)
+        val entries = pm.queryIntentActivities(launcher, 0)
+        assertWithMessage("launcher entries").that(entries.map { it.activityInfo.name }).containsExactly("app.guardianmode.ui.MainActivity")
+        val entry = entries.single()
+        assertWithMessage("launcher label").that(entry.loadLabel(pm).toString()).isEqualTo("Guardian Mode")
+        assertWithMessage("app label").that(pm.getApplicationLabel(pm.getApplicationInfo(rule.pkg, 0)).toString()).isEqualTo("Guardian Mode")
+        assertWithMessage("launcher icon is Guardian's own").that(entry.activityInfo.applicationInfo.icon).isEqualTo(app.guardianmode.R.mipmap.ic_launcher)
+        val main = ComponentName(rule.pkg, "app.guardianmode.ui.MainActivity")
+        assertWithMessage("launcher entry disabled").that(pm.getComponentEnabledSetting(main))
+            .isAnyOf(PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, PackageManager.COMPONENT_ENABLED_STATE_ENABLED)
+        // What a launcher actually lists (an app with no launcher entry would get a synthetic one, or none).
+        val apps = rule.context.getSystemService(LauncherApps::class.java).getActivityList(rule.pkg, Process.myUserHandle())
+        assertWithMessage("LauncherApps entries").that(apps.map { it.componentName.className }).containsExactly("app.guardianmode.ui.MainActivity")
+        assertWithMessage("LauncherApps label").that(apps.single().label.toString()).isEqualTo("Guardian Mode")
+
+        // Running, in the foreground, with its notification up and a way to pause from it.
+        assertThat(rule.waitUntil { rule.protectionNotification() != null }).isTrue()
+        val sbn = rule.protectionNotification()!!
+        assertThat(sbn.isOngoing).isTrue()
+        assertThat(sbn.notification.flags and Notification.FLAG_FOREGROUND_SERVICE).isNotEqualTo(0)
+        val nm = rule.context.getSystemService(NotificationManager::class.java)
+        assertWithMessage("protection channel importance").that(nm.getNotificationChannel(sbn.notification.channelId)!!.importance)
+            .isGreaterThan(NotificationManager.IMPORTANCE_NONE)
+        assertThat(sbn.notification.actions.map { it.title.toString() }).contains("Pause for 1 hour")
+        // Deprecated for other apps' services, but still returns the caller's own.
+        @Suppress("DEPRECATION")
+        val service = rule.context.getSystemService(ActivityManager::class.java).getRunningServices(50)
+            .firstOrNull { it.service.className == "app.guardianmode.protection.GuardianService" }
+        assertWithMessage("GuardianService is running").that(service).isNotNull()
+        assertWithMessage("GuardianService runs in the foreground").that(service!!.foreground).isTrue()
+
+        // And the way out is on the transparency screen.
+        rule.openTransparency()
+        assertThat(rule.seen(By.text("Stop using Guardian Mode"))).isTrue()
     }
 
     /** Everything under Guardian's data dir, without following links out of it (lib/ points at the APK's libraries). */

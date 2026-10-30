@@ -17,11 +17,13 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
 import traceback
 import xml.etree.ElementTree as ET
+import zlib
 from pathlib import Path
 
 PKG = "app.guardianmode.debug"
@@ -289,6 +291,38 @@ def tap_text(text: str) -> bool:
     return pos is not None
 
 
+def find_desc(prefix: str) -> tuple[int, int, int, int] | None:
+    """Bounds of the first node whose content-desc starts with [prefix]."""
+    xml = ui_dump()
+    for m in re.finditer(r'<node [^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
+        if m.group(1).replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&").startswith(prefix):
+            return tuple(map(int, m.group(2, 3, 4, 5)))  # type: ignore[return-value]
+    return None
+
+
+def pixel(x: int, y: int) -> tuple[int, int, int]:
+    """The screen's colour at (x, y), from a raw screencap (a short header, then RGBA rows)."""
+    raw = subprocess.run(["adb", "exec-out", "screencap"], capture_output=True, timeout=30).stdout
+    w, h = struct.unpack_from("<II", raw, 0)
+    offset = len(raw) - w * h * 4
+    check(12 <= offset <= 64, f"unexpected screencap layout: {len(raw)} bytes for {w}x{h}")
+    i = offset + (y * w + x) * 4
+    return raw[i], raw[i + 1], raw[i + 2]
+
+
+def solid_png(path: Path, rgb: tuple[int, int, int], w: int = 400, h: int = 300) -> None:
+    """A plain PNG of one colour, so a screenshot can tell whether the picture itself is drawn."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    row = b"\x00" + bytes(rgb) * w
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(row * h))
+        + chunk(b"IEND", b"")
+    )
+
+
 def call_state() -> int:
     m = re.search(r"mCallState=(\d)", sh("dumpsys telephony.registry"))
     return int(m.group(1)) if m else -1
@@ -409,6 +443,185 @@ def manifest_audit(apk: str, **_) -> None:
     measurements["Permissions not named in docs/POLICY.md"] = ", ".join(unexplained) or "none"
     measurements["Unguarded exported library components"] = ", ".join(library_exports) or "none"
     check(not problems, "; ".join(problems))
+
+
+def installs_and_opens(apk: str, **_) -> None:
+    """GM-INST-001: a plain install (no permissions granted), opened from the launcher entry,
+    opens without a crash on the role choice. The first open after install and a later cold
+    start (after a force stop) are both timed with `am start -W`; the bar is the case's,
+    3 s on API 36 and 5 s on the budget API 29 image, for the later cold start."""
+    sh(f"pm uninstall {PKG}")
+    adb("install", "-r", apk, timeout=300)
+    wake()
+    sh("logcat -b crash -c")
+
+    def launch() -> int:
+        out = sh(f"am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n {PKG}/app.guardianmode.ui.MainActivity", timeout=60)
+        m = re.search(r"TotalTime:\s*(\d+)", out) or re.search(r"WaitTime:\s*(\d+)", out)
+        check(m is not None and "Error" not in out, f"am start -W didn't report a launch: {out.strip()[:400]}")
+        return int(m.group(1))
+
+    first = launch()
+    check(wait_text("How will this phone be used?", 20), f"the first screen isn't the role choice ({top_activity()})")
+    sh(f"am force-stop {PKG}")
+    sh("input keyevent KEYCODE_HOME")
+    time.sleep(3)
+    cold = launch()
+    check(wait_text("How will this phone be used?", 20), f"the role choice didn't come back after a cold start ({top_activity()})")
+    crashes = sh("logcat -b crash -d")
+    measurements["Cold start: first open after install"] = f"{first} ms"
+    measurements["Cold start: after a force stop"] = f"{cold} ms"
+    check(PKG not in crashes, f"Guardian crashed while opening: {crashes.strip()[:600]}")
+    check(guardian_pid() != "", "Guardian's process isn't running after it opened")
+    bar = 5000 if sdk() < 33 else 3000
+    check(cold <= bar, f"cold start took {cold} ms (bar {bar} ms on API {sdk()}; first open after install {first} ms)")
+
+
+# Location, SMS, call log and Accessibility: Guardian must never ask for them or use them.
+BANNED_PERMISSIONS = {
+    "READ_SMS", "RECEIVE_SMS", "SEND_SMS", "RECEIVE_MMS", "RECEIVE_WAP_PUSH", "READ_CALL_LOG", "WRITE_CALL_LOG",
+    "PROCESS_OUTGOING_CALLS", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "ACCESS_BACKGROUND_LOCATION",
+    "BIND_ACCESSIBILITY_SERVICE",
+}
+BANNED_OPS = {
+    "COARSE_LOCATION", "FINE_LOCATION", "MONITOR_LOCATION", "MONITOR_HIGH_POWER_LOCATION", "READ_SMS", "WRITE_SMS",
+    "RECEIVE_SMS", "SEND_SMS", "RECEIVE_MMS", "RECEIVE_WAP_PUSH", "READ_ICC_SMS", "WRITE_ICC_SMS", "READ_CELL_BROADCASTS",
+    "RECEIVE_EMERGECY_SMS", "READ_CALL_LOG", "WRITE_CALL_LOG", "PROCESS_OUTGOING_CALLS", "BIND_ACCESSIBILITY_SERVICE",
+    "ACCESS_ACCESSIBILITY",
+}
+
+
+def requested_and_granted() -> tuple[set[str], set[str]]:
+    """Guardian's requested permissions, and those granted (install and runtime), from dumpsys package."""
+    out = sh(f"dumpsys package {PKG}")
+    requested: set[str] = set()
+    granted: set[str] = set()
+    section = None
+    for line in out.splitlines():
+        t = line.strip()
+        header = re.match(r"^(requested|install|runtime|declared) permissions:$", t)
+        if header:
+            section = header.group(1)
+            continue
+        m = re.match(r"^([A-Za-z0-9_.]+\.[A-Z0-9_]+)(:.*)?$", t)
+        if not m:
+            section = None
+            continue
+        if section == "requested":
+            requested.add(m.group(1))
+        elif section in ("install", "runtime") and "granted=true" in (m.group(2) or ""):
+            granted.add(m.group(1))
+    return requested, granted
+
+
+def ops_touched() -> dict[str, str]:
+    """Each app op `appops get` lists for Guardian, with what it says about it. On API 29 an
+    op is one line ("FINE_LOCATION: allow; time=+1m ago"); later levels add indented
+    "Access:" / "Reject:" lines under it."""
+    out = sh(f"appops get {PKG}")
+    ops: dict[str, str] = {}
+    current = None
+    for line in out.splitlines():
+        m = re.match(r"^\s{0,4}([A-Z][A-Z0-9_]+)\b[^:]*:\s*(.*)$", line)
+        if m:
+            current = m.group(1)
+            ops[current] = m.group(2).strip()
+        elif current and line.strip():
+            ops[current] += " " + line.strip()
+    return ops
+
+
+def no_banned_capabilities(apk: str, **_) -> None:
+    """GM-PRIV-023: after setup, an unknown call, the safe-word card and a pause card,
+    Guardian has never asked for or used Accessibility, SMS, the call log or location:
+    not in its requested or granted permissions, not in any app op it touched, not as an
+    enabled accessibility service. The full lists go in the report."""
+    fresh_app(apk)
+    check(wait_for(service_running, 30) is not None, "service never started")
+    broadcasts_idle()
+    standard_call()
+    dismiss_safe_word()
+    shown = pause_card_after_open()
+    sh("input keyevent KEYCODE_HOME")
+    time.sleep(2)
+    requested, granted = requested_and_granted()
+    ops = ops_touched()
+    measurements["Permissions requested"] = ", ".join(sorted(p.split(".")[-1] for p in requested)) or "none"
+    measurements["Permissions granted at the end of the run"] = ", ".join(sorted(p.split(".")[-1] for p in granted)) or "none"
+    used = {op: v for op, v in ops.items() if re.search(r"time=|Access:|Reject:|rejectTime=|duration=", v)}
+    measurements["App ops Guardian used"] = ", ".join(sorted(used)) or "none"
+    check(requested, "couldn't read Guardian's requested permissions from dumpsys package")
+    problems = [f"requests {p}" for p in sorted(requested) if p.split(".")[-1] in BANNED_PERMISSIONS]
+    problems += [f"holds {p}" for p in sorted(granted) if p.split(".")[-1] in BANNED_PERMISSIONS]
+    problems += [f"app op {op}: {v[:160]}" for op, v in sorted(used.items()) if op in BANNED_OPS]
+    a11y = sh("settings get secure enabled_accessibility_services")
+    if PKG in a11y:
+        problems.append(f"enabled as an accessibility service: {a11y.strip()}")
+    check(not problems, "; ".join(problems))
+    # The run has to have exercised protection for "never used" to mean something.
+    check(shown, f"the pause card never showed, so the run didn't exercise protection ({diagnosis()})")
+
+
+PHOTO_RGB = (220, 30, 150)
+
+
+def photo_showing() -> bool:
+    """The photo card is on the home screen and its centre is the test picture's colour."""
+    bounds = None
+    for prefix in ("Today. ", "Yesterday. "):
+        bounds = find_desc(prefix)
+        if bounds:
+            break
+    if not bounds:
+        return False
+    x1, y1, x2, y2 = bounds
+    # Above the caption's gradient, which covers the bottom of the card.
+    r, g, b = pixel((x1 + x2) // 2, y1 + (y2 - y1) // 3)
+    return all(abs(a - e) <= 40 for a, e in zip((r, g, b), PHOTO_RGB))
+
+
+def photos_survive(apk: str, **_) -> None:
+    """GM-PHOTO-009: a picture added on the phone is still there and drawn on the home
+    screen after a force stop, an install over the top and a reboot. (The picture goes in
+    the way the importer leaves it, a file in Guardian's files/photos and a localPhotos
+    entry; adding it through the share sheet is gm_photo_003 on the device suite.)"""
+    fresh_app(apk)
+    wait_for(service_running, 30)
+    photo_id = "local-gm-photo-009"
+    path = f"/data/user/0/{PKG}/files/photos/{photo_id}.jpg"
+    png = Path("gm-photo.png")
+    solid_png(png, PHOTO_RGB)
+    adb("push", str(png), "/data/local/tmp/gm-photo.png")
+    png.unlink()
+    write_state({
+        "onboardingDone": True,
+        "localPhotos": [{"id": photo_id, "url": f"file://{path}", "fromName": "", "createdAt": int(time.time() * 1000)}],
+    })
+    sh(f"run-as {PKG} mkdir -p files/photos")
+    sh(f"run-as {PKG} sh -c 'cat /data/local/tmp/gm-photo.png > files/photos/{photo_id}.jpg'")
+    sh("rm /data/local/tmp/gm-photo.png")
+
+    def still_there(when: str) -> None:
+        state = read_state()
+        ids = [p.get("id") for p in state.get("localPhotos", [])]
+        check(photo_id in ids, f"{when}: the photo is gone from Guardian's saved state (localPhotos={ids})")
+        size = sh(f"run-as {PKG} stat -c %s files/photos/{photo_id}.jpg").strip()
+        check(size.isdigit() and int(size) > 0, f"{when}: the photo's file is gone ({size or 'no output'})")
+        wake()
+        sh("input keyevent KEYCODE_HOME")
+        check(wait_for(photo_showing, 20) is not None, f"{when}: the photo card isn't showing the picture on the home screen ({top_activity()})")
+
+    still_there("after it was added")
+    sh(f"am force-stop {PKG}")
+    time.sleep(2)
+    still_there("after a force stop")
+    adb("install", "-r", apk, timeout=300)
+    wait_for(service_running, 60)
+    still_there("after installing over the top")
+    reboot()
+    wake()
+    wait_for(service_running, 60)
+    still_there("after a reboot")
 
 
 def apk_size(apk: str, **_) -> None:
@@ -579,12 +792,15 @@ def memory(apk: str, **_) -> None:
 CHECKS = [
     ("gm_base_009_manifestAudit", manifest_audit, False),
     ("gm_perf_008_apkSize", apk_size, False),
+    ("gm_inst_001_installsAndOpensOnTheRoleChoice", installs_and_opens, True),
     ("gm_svc_001_serviceRunsAfterSetup", service_starts, True),
+    ("gm_priv_023_noBannedCapabilitiesInPractice", no_banned_capabilities, True),
     ("gm_perf_007_homeScreenMemory", memory, True),
     ("gm_svc_007_survivesUpdate", survives_update, True),
     ("gm_svc_008_forceStopThenHome", force_stop_then_home, True),
     ("gm_svc_009_unknownCallDuringDoze", doze_call, True),
     ("gm_pause_042_processKilledAfterCall", killed_after_call, True),
+    ("gm_photo_009_photosSurviveRestartUpdateAndReboot", photos_survive, True),
     ("gm_svc_006_survivesReboot", survives_reboot, True),
     ("gm_pause_043_gm_svc_006_pauseCardAfterReboot", pause_card_after_reboot, True),
 ]
