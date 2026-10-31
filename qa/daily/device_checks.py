@@ -95,10 +95,51 @@ def reboot() -> float:
         time.sleep(15)
     adb("reboot", ok=False)
     time.sleep(10)
-    completed = wait_for_boot()
+    try:
+        completed = wait_for_boot(240)
+    except subprocess.TimeoutExpired:
+        # The phone never came back to adb. On the CI emulator that is the emulator process
+        # dying on the reboot (gone from `adb devices`: the 10-30 and both 10-31 API 36 branch
+        # runs), not Guardian, so start it again: a cold boot is still a boot of the phone.
+        relaunch_emulator()
+        completed = wait_for_boot(600)
     after = boot_id()
     check(after != "" and after != before, f"the phone didn't reboot (boot id {before!r} before, {after!r} after)")
     return completed
+
+
+# The emulator's AVD name, read before any reboot so a lost emulator can be started again.
+avd_name = ""
+EMULATOR_OPTIONS = ["-no-window", "-gpu", "swiftshader_indirect", "-noaudio", "-no-boot-anim", "-camera-back", "none"]  # as android-emulator.yml
+
+
+def host_diagnostics() -> str:
+    """The CI machine's memory, disk, kernel messages about killed processes, and emulator processes."""
+    def run(cmd: str) -> str:
+        try:
+            return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20).stdout.strip()
+        except subprocess.TimeoutExpired:
+            return "timed out"
+    return (f"mem: {run('free -m | sed -n 2p')}; disk: {run('df -h . | tail -1')}; "
+            f"kernel: {run('sudo -n dmesg 2>/dev/null | grep -iE \"out of memory|killed process|qemu\" | tail -3') or 'nothing'}; "
+            f"emulator processes: {run('ps -eo pid,rss,args | grep [q]emu-system | cut -c1-120') or 'none'}; adb: {run('adb devices | tail -n +2 | tr -s \"\\n\" \" \"')}")
+
+
+def relaunch_emulator() -> None:
+    """Starts the emulator again after it died on a reboot, cold (no snapshot), with the
+    options the workflow starts it with. Says so in an annotation and the measurements, with
+    what the machine looked like, so a lost emulator is never silent."""
+    diag = host_diagnostics()
+    print(f"::warning title=device-host emulator::the emulator didn't come back from a reboot; starting it again. {diag[:3000]}")
+    measurements["Emulator lost on a reboot and started again"] = diag[:600]
+    check(avd_name != "", f"the emulator was lost on a reboot and its AVD name wasn't known, so it can't be started again ({diag})")
+    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    binary = str(Path(sdk_root) / "emulator" / "emulator") if sdk_root else (shutil.which("emulator") or "emulator")
+    subprocess.run(["pkill", "-9", "-f", "qemu-system"], capture_output=True)
+    time.sleep(3)
+    log = open("emulator-relaunch.log", "w")  # noqa: SIM115 - the emulator outlives this function
+    subprocess.Popen([binary, "-avd", avd_name, "-port", "5554", *EMULATOR_OPTIONS, "-no-snapshot-load", "-no-snapshot-save"],
+                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 
 
 def sdk() -> int:
@@ -961,6 +1002,10 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
+    if not args.no_device:
+        global avd_name
+        avd_name = next(iter(adb("emu", "avd", "name", ok=False, timeout=30).split()), "")
+        print(f"emulator AVD: {avd_name or 'unknown'}")
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
     for name, fn, needs_device in CHECKS:
