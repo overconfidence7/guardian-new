@@ -42,6 +42,7 @@ Budget phones kill apps, lose signal, run out of storage, and get their settings
 
 ### GM-ROB-011 · Uninstall and reinstall  `P1` `[AVD]`
 **Expect:** after uninstall + reinstall, setup starts fresh; nothing from before survives (no backup). On the real phone, don't do this without Nate.
+**In the cloud:** `device_checks.py` `gm_rob_011_reinstallStartsFresh` (API 29 and 36): after setup (and a picture file in `files/photos`), `pm uninstall` and a plain install leave no saved state or files; opening Guardian starts setup again with protection off and the home role gone.
 
 ### GM-ROB-012 · Upgrade from the previous testing build  `P0` `[PHONE]`
 **Steps:** the phone already has an older testing build in solo mode with Nate's settings. With Nate's OK, install the current `guardian-mode-test.apk` over it (`adb install -r`).
