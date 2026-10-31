@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
  * qa/antigravity/cases/11-service-and-notifications.md: the persistent notification read
  * back from Android (Guardian can list its own notifications) and used from the shade.
  *
- * Not here: GM-SVC-003 (Stop from "Active apps" force-stops the app, ending these tests),
+ * Not here: GM-SVC-003 (Stop from "Active apps" stops the app, ending these tests),
  * GM-SVC-006/007/008 (reboot, reinstall, force stop) and GM-SVC-011 (revoking
  * POST_NOTIFICATIONS kills the process). Those stay with the host-side script.
  */
