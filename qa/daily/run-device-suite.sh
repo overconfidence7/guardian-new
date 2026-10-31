@@ -57,7 +57,9 @@ fi
 timeout 110m ./gradlew "${args[@]}"
 rc=$?
 if [ $rc -eq 124 ]; then
-  echo "::error title=$(basename "$OUT") instrumented::the instrumented suite was still running after 110 minutes and was stopped"
+  last="$(grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null | tail -2 | tr '\n' ' ' | cut -c1-600)"
+  adb_state="$(timeout 20 adb devices 2>&1 | tail -n +2 | tr '\n' ' ')"
+  echo "::error title=$(basename "$OUT") instrumented::the instrumented suite was still running after 110 minutes and was stopped. Last test events: ${last:-none}. adb devices: ${adb_state:-no answer}"
 fi
 [ $rc -eq 0 ] || status=1
 timeout 120 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
@@ -71,7 +73,10 @@ python3 "$ROOT/qa/daily/device_diagnostics.py" "$OUT/instrumented" "$OUT/logcat-
 
 # Host-side checks: reboots, reinstalls, process death, Doze, manifest audit.
 if [ "$HOST" = "true" ]; then
-  adb logcat -c || true
+  # Every adb call here has a time limit: after a hang the emulator or adb itself may not
+  # answer, and an adb call without one (such as this logcat -c used to be) is the likeliest
+  # reason the 10-31 API 29 run went on to the 3 h limit after the suite was stopped.
+  timeout 30 adb logcat -c || true
   timeout 45m python3 "$ROOT/qa/daily/device_checks.py" --apk app/build/outputs/apk/debug/app-debug.apk --out "$OUT/host" || status=1
   timeout 120 adb logcat -d -v time > "$OUT/logcat-host.txt" 2>/dev/null || true
 fi
@@ -79,12 +84,14 @@ fi
 # An emulator that didn't come back from a reboot (gone from adb, or there but not
 # answering) kept the 10-30 and 10-31 API 36 branch runs going until the 3 h limit after
 # every check had finished and posted its summary (most likely the action's shutdown, which
-# talks to the emulator, waited on it). Stop it here so the job ends.
+# talks to the emulator, waited on it). Stop it, and adb, here so the job ends.
 if ! timeout 30 adb shell true >/dev/null 2>&1; then
   echo "::warning title=$(basename "$OUT") emulator::the emulator stopped answering adb by the end of the run; stopping it"
   timeout 20 adb emu kill >/dev/null 2>&1 || true
   sleep 5
   pkill -9 -f qemu-system >/dev/null 2>&1 || true
+  # A wedged adb server would hang the action's own `adb emu kill` too.
+  timeout 10 adb kill-server >/dev/null 2>&1 || pkill -9 -x adb >/dev/null 2>&1 || true
 fi
 
 exit $status

@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
@@ -1008,9 +1009,20 @@ def main() -> int:
         print(f"emulator AVD: {avd_name or 'unknown'}")
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
+    current = {"name": "", "start": time.time()}
+
+    def stopped_from_outside(signum, _frame) -> None:
+        # run-device-suite.sh stops this after 45 minutes; say where it was, since nothing
+        # else from a stopped run can be read through the API.
+        done = [c.get("name") for c in suite]
+        print(f"::error title={args.suite} stopped::device_checks.py was stopped (signal {signum}) during {current['name']} "
+              f"after {time.time() - current['start']:.0f} s; checks before it: {', '.join(done[:-1]) or 'none'}", flush=True)
+        sys.exit(1)
+    signal.signal(signal.SIGTERM, stopped_from_outside)
     for name, fn, needs_device in CHECKS:
         if needs_device and args.no_device:
             continue
+        current.update(name=name, start=time.time())
         case = ET.SubElement(suite, "testcase", classname="DeviceChecks", name=name)
         start = time.time()
         try:
