@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import struct
 import subprocess
 import sys
@@ -38,6 +39,10 @@ measurements: dict[str, str] = {}
 
 class CheckFailed(AssertionError):
     pass
+
+
+class CheckSkipped(Exception):
+    """The check can't apply on this Android level (recorded as skipped, with the reason)."""
 
 
 def check(cond: bool, message: str) -> None:
@@ -91,14 +96,60 @@ def reboot() -> float:
         time.sleep(15)
     adb("reboot", ok=False)
     time.sleep(10)
-    completed = wait_for_boot()
+    try:
+        completed = wait_for_boot(240)
+    except subprocess.TimeoutExpired:
+        # The phone never came back to adb. On the CI emulator that is the emulator process
+        # dying on the reboot (gone from `adb devices`: the 10-30 and both 10-31 API 36 branch
+        # runs), not Guardian, so start it again: a cold boot is still a boot of the phone.
+        relaunch_emulator()
+        completed = wait_for_boot(600)
     after = boot_id()
     check(after != "" and after != before, f"the phone didn't reboot (boot id {before!r} before, {after!r} after)")
     return completed
 
 
+# The emulator's AVD name, read before any reboot so a lost emulator can be started again.
+avd_name = ""
+EMULATOR_OPTIONS = ["-no-window", "-gpu", "swiftshader_indirect", "-noaudio", "-no-boot-anim", "-camera-back", "none"]  # as android-emulator.yml
+
+
+def host_diagnostics() -> str:
+    """The CI machine's memory, disk, kernel messages about killed processes, and emulator processes."""
+    def run(cmd: str) -> str:
+        try:
+            return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20).stdout.strip()
+        except subprocess.TimeoutExpired:
+            return "timed out"
+    return (f"mem: {run('free -m | sed -n 2p')}; disk: {run('df -h . | tail -1')}; "
+            f"kernel: {run('sudo -n dmesg 2>/dev/null | grep -iE \"out of memory|killed process|qemu\" | tail -3') or 'nothing'}; "
+            f"emulator processes: {run('ps -eo pid,rss,args | grep [q]emu-system | cut -c1-120') or 'none'}; adb: {run('adb devices | tail -n +2 | tr -s \"\\n\" \" \"')}")
+
+
+def relaunch_emulator() -> None:
+    """Starts the emulator again after it died on a reboot, cold (no snapshot), with the
+    options the workflow starts it with. Says so in an annotation and the measurements, with
+    what the machine looked like, so a lost emulator is never silent."""
+    diag = host_diagnostics()
+    print(f"::warning title=device-host emulator::the emulator didn't come back from a reboot; starting it again. {diag[:3000]}")
+    measurements["Emulator lost on a reboot and started again"] = diag[:600]
+    check(avd_name != "", f"the emulator was lost on a reboot and its AVD name wasn't known, so it can't be started again ({diag})")
+    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    binary = str(Path(sdk_root) / "emulator" / "emulator") if sdk_root else (shutil.which("emulator") or "emulator")
+    subprocess.run(["pkill", "-9", "-f", "qemu-system"], capture_output=True)
+    time.sleep(3)
+    log = open("emulator-relaunch.log", "w")  # noqa: SIM115 - the emulator outlives this function
+    subprocess.Popen([binary, "-avd", avd_name, "-port", "5554", *EMULATOR_OPTIONS, "-no-snapshot-load", "-no-snapshot-save"],
+                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+
+
 def sdk() -> int:
-    return int(sh("getprop ro.build.version.sdk").strip() or "0")
+    """The Android level. Fails when the phone doesn't answer, rather than reading as level 0:
+    on the 10-31 branch run the emulator was gone after a reboot and a check that skips below
+    API 33 was skipped instead of failing."""
+    out = sh("getprop ro.build.version.sdk").strip()
+    check(out.isdigit(), f"the phone didn't say its Android level (is the emulator still there? {out[:120]!r})")
+    return int(out)
 
 
 def app_stopped() -> bool:
@@ -264,6 +315,28 @@ def wait_for(predicate, timeout: float, interval: float = 1.0) -> float | None:
             return time.time() - start
         time.sleep(interval)
     return None
+
+
+def protection_notification() -> str | None:
+    """The title of Guardian's persistent notification if it is posted, else None. Whether it
+    is posted comes from `cmd notification list` (one key per active notification,
+    "0|pkg|id|tag|uid"); the title from dumpsys, for the message."""
+    keys = sh("cmd notification list")
+    if "|" not in keys and re.search(r"unknown|usage|not found", keys, re.I):
+        keys = sh("dumpsys notification --noredact", timeout=60).replace("key=", "\n")
+    if not re.search(rf"^\d+\|{re.escape(PKG)}\|1\|", keys, re.M):
+        return None
+    out = sh("dumpsys notification --noredact", timeout=60)
+    for record in out.split("NotificationRecord(")[1:]:
+        if f"pkg={PKG} " in record[:200] and " id=1 " in record[:300]:
+            m = re.search(r"android\.title=\S+ \((.*?)\)\s*$", record, re.M)
+            return m.group(1) if m else "?"
+    return "?"
+
+
+def protected() -> bool:
+    """The service runs and its notification says protection is on."""
+    return service_running() and protection_notification() == "Guardian Mode is on"
 
 
 def ui_dump() -> str:
@@ -633,6 +706,108 @@ def photos_survive(apk: str, **_) -> None:
     still_there("after a reboot")
 
 
+def home_before_setup(apk: str, **_) -> None:
+    """GM-INST-011: before setup is finished, Guardian isn't the home app. A plain install
+    (nothing granted), opened on the role choice, then Home: the phone's normal launcher
+    comes up. Opening Guardian again goes back to setup."""
+    sh(f"pm uninstall {PKG}")
+    adb("install", "-r", apk, timeout=300)
+    wake()
+    sh("input keyevent KEYCODE_HOME")
+    time.sleep(2)
+    launcher = top_activity()
+    open_app(PKG)
+    check(wait_text("How will this phone be used?", 20), f"Guardian didn't open on the role choice ({top_activity()})")
+    sh("input keyevent KEYCODE_HOME")
+    left = wait_for(lambda: not top_activity().startswith(PKG), 10)
+    top = top_activity()
+    measurements["Before setup: Home opens"] = top
+    check(left is not None, f"Home during setup stayed in Guardian ({top}; the launcher before was {launcher})")
+    holders = home_holders()
+    check(PKG not in holders, f"Guardian holds the home role before setup asked for it ({holders})")
+    check(read_state().get("onboardingDone") is not True, "setup is marked done though it was never finished")
+    if "ResolverActivity" in top:  # a home chooser, not the launcher: leave it before reopening
+        sh("input keyevent KEYCODE_BACK")
+    open_app(PKG)
+    check(wait_text("How will this phone be used?", 20), f"reopening Guardian didn't go back to setup ({top_activity()})")
+    sh("input keyevent KEYCODE_HOME")
+
+
+def reinstall_starts_fresh(apk: str, **_) -> None:
+    """GM-ROB-011: after uninstalling and installing again, setup starts fresh and nothing
+    from before survives: no saved state or pictures, no protection running, not the home app."""
+    fresh_app(apk)
+    check(wait_for(service_running, 30) is not None, "service never started before the uninstall")
+    time.sleep(3)
+    check(read_state().get("onboardingDone") is True, "setup wasn't saved as done before the uninstall")
+    sh(f"run-as {PKG} sh -c 'mkdir -p files/photos && echo x > files/photos/local-gm-rob-011.jpg'")
+    sh(f"pm uninstall {PKG}")
+    check(PKG not in sh(f"pm list packages {PKG}"), "Guardian is still installed after pm uninstall")
+    adb("install", "-r", apk, timeout=300)
+    wake()
+    left = sh(f"run-as {PKG} ls files files/datastore files/photos").strip()
+    check(read_state() == {} and "guardian_state.json" not in left and "local-gm-rob-011" not in left,
+          f"something from before the uninstall survived: {left[:300]!r} state={read_state()}")
+    open_app(PKG)
+    check(wait_text("How will this phone be used?", 20), f"Guardian didn't start setup again ({top_activity()})")
+    check(read_state().get("onboardingDone") is not True, "setup is marked done after a reinstall")
+    check(not service_running(), "protection is running before setup was done again")
+    check(PKG not in home_holders(), f"Guardian is still the home app after a reinstall ({home_holders()})")
+    sh("input keyevent KEYCODE_HOME")
+
+
+def stopped_from_active_apps(apk: str, **_) -> None:
+    """GM-SVC-003: the parent stops Guardian from Android's "Active apps" list (Quick
+    Settings, API 33+). Its Stop button is the system's stop-app (stop the process and its
+    services, keep alarms and jobs), which `am stop-app` runs (API 34+). The pass rule, from
+    docs/SPEC.md design rule 3 and docs/POLICY.md §1 rule 4 (user-stoppable):
+      1. Stop works: within 10 s the service is gone and so is "Guardian Mode is on".
+      2. It stays stopped while the parent uses another app: not back within 15 s, and
+         never running without its notification (no hidden protection).
+      3. The next Home press brings it back, notification included, within 30 s (Guardian is
+         the home app; the notification is how the parent sees it is on again).
+      4. Nothing keeps it from coming back at the next boot: Android hasn't marked it
+         stopped (a stopped app gets no BOOT_COMPLETED, GM-SVC-006's path), or, if it has,
+         Guardian is still the home app, which the boot opens (GM-SVC-008's path).
+    Point 4 doesn't reboot: GM-SVC-006 does, and each reboot risks the CI emulator not
+    coming back (it didn't on the 10-30 and 10-31 API 36 branch runs).
+    Stopped from a Notes app in front, as a parent would from any app."""
+    if sdk() < 33:
+        raise CheckSkipped(f"API {sdk()} has no Active apps list (Android 13 added it)")
+    fresh_app(apk)
+    check(wait_for(protected, 30) is not None,
+          f"protection isn't on before the stop (service={service_running()} notification={protection_notification()!r})")
+    open_app(NOTES)
+    check(wait_for(lambda: NOTES in top_activity(), 10) is not None, f"Notes didn't open ({top_activity()})")
+    pid = guardian_pid()
+    out = sh(f"am stop-app {PKG}").strip()
+    check(not re.search(r"Unknown command|Error|Exception", out), f"am stop-app isn't available on API {sdk()}: {out[:300]}")
+    gone = wait_for(lambda: not service_running() and protection_notification() is None, 10)
+    check(gone is not None, f"10 s after Stop the service={service_running()} notification={protection_notification()!r} "
+                            f"pid {pid} -> {guardian_pid() or 'none'}")
+    hidden: list[str] = []
+
+    def back() -> bool:
+        running, title = service_running(), protection_notification()
+        if running and title is None:
+            hidden.append(f"service running with no notification (pid {guardian_pid()})")
+        return running or title is not None
+    again = wait_for(back, 15)
+    check(not hidden, hidden[0] if hidden else "")
+    check(again is None, f"Guardian started again by itself {again or 0:.0f} s after the parent stopped it, with Notes in front "
+                         f"(service={service_running()} notification={protection_notification()!r} last exit: {last_exit()} log: {guardian_log(4)})")
+    stopped, holders = app_stopped(), home_holders()
+    measurements["Stopped from Active apps: Android's stopped flag"] = str(stopped).lower()
+    check(not stopped or PKG in holders, f"after Stop Android marks Guardian stopped (no BOOT_COMPLETED) and it isn't the home app ({holders})")
+
+    wake()
+    sh("input keyevent KEYCODE_HOME")
+    took = wait_for(protected, 30)
+    measurements["Stopped from Active apps: Home to protection on"] = f"{took:.0f} s" if took is not None else "never"
+    check(took is not None, f"Home didn't bring protection back within 30 s (top={top_activity()} service={service_running()} "
+                            f"notification={protection_notification()!r} stopped={app_stopped()})")
+
+
 def apk_size(apk: str, **_) -> None:
     """GM-PERF-008: record the test APK's size; flag it past 150 MB."""
     mb = Path(apk).stat().st_size / 1_048_576
@@ -802,11 +977,14 @@ CHECKS = [
     ("gm_base_009_manifestAudit", manifest_audit, False),
     ("gm_perf_008_apkSize", apk_size, False),
     ("gm_inst_001_installsAndOpensOnTheRoleChoice", installs_and_opens, True),
+    ("gm_inst_011_homeBeforeSetupIsTheOldLauncher", home_before_setup, True),
+    ("gm_rob_011_reinstallStartsFresh", reinstall_starts_fresh, True),
     ("gm_svc_001_serviceRunsAfterSetup", service_starts, True),
     ("gm_priv_023_noBannedCapabilitiesInPractice", no_banned_capabilities, True),
     ("gm_perf_007_homeScreenMemory", memory, True),
     ("gm_svc_007_survivesUpdate", survives_update, True),
     ("gm_svc_008_forceStopThenHome", force_stop_then_home, True),
+    ("gm_svc_003_stoppedFromActiveAppsComesBackOnHome", stopped_from_active_apps, True),
     ("gm_svc_009_unknownCallDuringDoze", doze_call, True),
     ("gm_pause_042_processKilledAfterCall", killed_after_call, True),
     ("gm_photo_009_photosSurviveRestartUpdateAndReboot", photos_survive, True),
@@ -825,16 +1003,34 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
+    if not args.no_device:
+        global avd_name
+        avd_name = next(iter(adb("emu", "avd", "name", ok=False, timeout=30).split()), "")
+        print(f"emulator AVD: {avd_name or 'unknown'}")
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
+    current = {"name": "", "start": time.time()}
+
+    def stopped_from_outside(signum, _frame) -> None:
+        # run-device-suite.sh stops this after 45 minutes; say where it was, since nothing
+        # else from a stopped run can be read through the API.
+        done = [c.get("name") for c in suite]
+        print(f"::error title={args.suite} stopped::device_checks.py was stopped (signal {signum}) during {current['name']} "
+              f"after {time.time() - current['start']:.0f} s; checks before it: {', '.join(done[:-1]) or 'none'}", flush=True)
+        sys.exit(1)
+    signal.signal(signal.SIGTERM, stopped_from_outside)
     for name, fn, needs_device in CHECKS:
         if needs_device and args.no_device:
             continue
+        current.update(name=name, start=time.time())
         case = ET.SubElement(suite, "testcase", classname="DeviceChecks", name=name)
         start = time.time()
         try:
             fn(apk=args.apk)
             print(f"PASS {name}")
+        except CheckSkipped as e:
+            ET.SubElement(case, "skipped", message=str(e))
+            print(f"SKIP {name}: {e}")
         except Exception as e:  # noqa: BLE001 - every check is isolated
             failures += 1
             tag = "failure" if isinstance(e, CheckFailed) else "error"

@@ -23,14 +23,17 @@ Put test images on the emulator first: `adb push <file> /sdcard/Pictures/` then 
 ### GM-PHOTO-005 · Pictures are resized and kept privately  `P1`
 **Steps:** share the 4000x3000 JPEG. `adb shell run-as app.guardianmode.debug ls -l files/photos`, pull one file (copy to /data/local/tmp first, as in RUNBOOK §7) and check its size.
 **Expect:** saved as JPEG, longest side 1600 px, a few hundred KB. Stored in app-private `files/photos/`, nowhere on shared storage. Nothing sent over the network (logcat and, in Track B, the Storage emulator show no upload).
+**In the cloud:** `PhotoImportDeviceTest.gm_photo_005_resizedToJpegAt1600AndKeptPrivately` (all three levels) gives the importer the share page uses a 4000x3000 JPEG: one JPEG of 1600x1200 under 1 MB in Guardian's private `files/photos`; a 1500x4500 picture comes out 533x1600 and a 320x240 one isn't enlarged. The importer has no network code; the upload side is Track B.
 
 ### GM-PHOTO-006 · Odd files  `P1`
 **Steps:** share the PNG, HEIC, WebP, GIF, the 50 MB panorama and the corrupt `.jpg`, one at a time.
 **Expect:** each either works or shows "That didn't work" / "Those pictures couldn't be added. Try sharing them again." No crash, no hang over 10 s, no out-of-memory on `gm-api29-budget` with the panorama (watch logcat for `OutOfMemoryError`).
+**In the cloud:** `PhotoImportDeviceTest.gm_photo_006_oddFilesWorkOrFailWithoutCrashing` (all three levels, the budget API 29 image included): a PNG, a WebP and a 9000x1500 panorama are each added as a JPEG of at most 1600 px in under 10 s; a corrupt `.jpg`, a text file named `.jpg` and a file that is gone add nothing (the share page then says "That didn't work") and leave no files; a batch with bad files keeps the good one. The emulators can't make HEIC or animated GIF files, so those stay with the phone pass.
 
 ### GM-PHOTO-007 · The 30-photo limit  `P1`
 **Steps:** add 35 pictures in batches.
 **Expect:** the 30 newest are kept; the oldest go, and their files are deleted from `files/photos` (count them).
+**In the cloud:** `PhotoImportDeviceTest.gm_photo_007_keepsTheNewest30AndDeletesTheRest` (all three levels): 35 pictures in batches of 5 leave the 30 newest, newest first, and exactly their 30 files; one share of 35 keeps 30.
 
 ### GM-PHOTO-008 · Remove a photo  `P1`
 **Expect:** each local photo has "Remove this photo". It disappears from the page and the home card, and its file is deleted. Removing the last one returns the card to its empty text.
