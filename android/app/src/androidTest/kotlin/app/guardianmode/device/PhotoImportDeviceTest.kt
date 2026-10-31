@@ -55,7 +55,13 @@ class PhotoImportDeviceTest {
 
     private fun import(vararg uris: Uri): Int = runBlocking { rule.container.photos.import(uris.toList()) }
 
-    private val photos get() = rule.state.localPhotos
+    /**
+     * The saved photos as written. `store.current` is a StateFlow fed from the DataStore on
+     * another coroutine and can lag a write by a moment (gm_photo_007 read the batch before
+     * last on PR #18's API 36 run), so this reads through a no-op update, which returns the
+     * state the last write left.
+     */
+    private val photos get() = runBlocking { rule.container.store.update { it } }.localPhotos
 
     private fun fileOf(url: String) = File(Uri.parse(url).path!!)
 
