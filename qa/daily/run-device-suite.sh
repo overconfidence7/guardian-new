@@ -42,8 +42,8 @@ adb logcat -G 32M >/dev/null 2>&1 || true
 adb logcat -c >/dev/null 2>&1 || true
 
 # The traces and diagnostics, streamed to a file as they happen (the log buffer alone
-# doesn't keep a whole run's worth).
-adb logcat -v time -s TestRunner:I GuardianTrace:I GuardianDiag:I UiDump:I DeviceRule:W > "$OUT/logcat-diag.txt" 2>/dev/null &
+# doesn't keep a whole run's worth). ScamScenario carries each scenario's steps.
+adb logcat -v time -s TestRunner:I GuardianTrace:I GuardianDiag:I UiDump:I DeviceRule:W ScamScenario:I > "$OUT/logcat-diag.txt" 2>/dev/null &
 diag_pid=$!
 
 cd "$ROOT/android"
@@ -51,16 +51,77 @@ args=(connectedDebugAndroidTest --no-daemon --continue)
 if [ "$KNOWN" != "true" ]; then
   args+=(-Pandroid.testInstrumentationRunnerArguments.notAnnotation=app.guardianmode.support.KnownBug)
 fi
-# The instrumented suite takes about an hour. A run that hangs (API 29 on 10-30, branch run
-# 41079010624, sat until the job's 3 h limit) is stopped here instead, so the host checks
-# and the report still happen and the hang shows up as a failure.
-timeout 110m ./gradlew "${args[@]}"
+
+# The instrumented suite takes about an hour. It runs under a watchdog, so a run that hangs
+# ends with a failure that says where, and the host checks and the report still happen:
+#  - the whole suite gets SUITE_LIMIT (a hang on 10-30, branch run 41079010624, sat until the
+#    job's 3 h limit);
+#  - no test may start or finish for STALL_LIMIT (each test also has a 15-minute limit of its
+#    own inside DeviceRule; the longest takes about 5);
+#  - while tests run, the emulator must answer adb. On 11-01 (daily run 41303524589, API 29)
+#    it stopped answering during gm_scam_004, which turns the screen off during a call, and
+#    the suite sat at the 110-minute limit. If it doesn't answer for 2 minutes, power is
+#    pressed from the emulator console (which works while the system inside doesn't) and the
+#    annotation says whether that brought it back: back means it had gone to sleep, not back
+#    means it crashed. Still not back 5 minutes later, the suite is stopped.
+SUITE_LIMIT=${SUITE_LIMIT:-$((110 * 60))}
+STALL_LIMIT=${STALL_LIMIT:-$((20 * 60))}
+POLL=${POLL:-30}
+last_events() { grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null | tail -2 | tr '\n' ' ' | cut -c1-600; }
+last_lines() { tail -n 4 "$OUT/logcat-diag.txt" 2>/dev/null | cut -c1-300 | tr '\n' ' '; }
+answers() { timeout 20 adb shell true >/dev/null 2>&1; }
+
+setsid ./gradlew "${args[@]}" &
+gradle_pid=$!
+started=$(date +%s)
+last_change=$started
+last_count=0
+silent=0
+pressed=""
+stopped=""
+while kill -0 "$gradle_pid" 2>/dev/null; do
+  sleep "$POLL"
+  now=$(date +%s)
+  count=$(grep -cE 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null || true)
+  count=${count:-0}
+  if [ "$count" != "$last_count" ]; then last_count=$count; last_change=$now; fi
+  if [ "$count" -gt 0 ]; then
+    if answers; then
+      if [ -n "$pressed" ]; then
+        echo "::warning title=$(basename "$OUT") emulator asleep::the emulator stopped answering adb during the suite (${pressed}) and answered again after power was pressed from the emulator console, so it had gone to sleep rather than crashed. The suite went on."
+        pressed=""
+      fi
+      silent=0
+    else
+      silent=$((silent + 1))
+      if [ "$silent" -eq 4 ] && [ -z "$pressed" ]; then
+        pressed="last test events: $(last_events); last lines: $(last_lines)"
+        timeout 20 adb emu event send EV_KEY:KEY_POWER:1 EV_KEY:KEY_POWER:0 >/dev/null 2>&1 || true
+      elif [ "$silent" -ge 14 ]; then
+        stopped="the emulator stopped answering adb during the suite and didn't answer again within 5 minutes of power being pressed from the emulator console, so it crashed or hung rather than slept (${pressed:-last test events: $(last_events)})"
+      fi
+    fi
+  fi
+  if [ -z "$stopped" ] && [ $((now - last_change)) -ge "$STALL_LIMIT" ] && [ "$count" -gt 0 ]; then
+    stopped="no test started or finished for $((STALL_LIMIT / 60)) minutes. Last test events: $(last_events). Last lines: $(last_lines)"
+  fi
+  if [ -z "$stopped" ] && [ $((now - started)) -ge "$SUITE_LIMIT" ]; then
+    stopped="the instrumented suite was still running after $((SUITE_LIMIT / 60)) minutes. Last test events: $(last_events)"
+  fi
+  if [ -n "$stopped" ]; then
+    kill -TERM -- "-$gradle_pid" 2>/dev/null || kill -TERM "$gradle_pid" 2>/dev/null
+    for _ in 1 2 3 4 5 6; do kill -0 "$gradle_pid" 2>/dev/null || break; sleep 5; done
+    kill -KILL -- "-$gradle_pid" 2>/dev/null || true
+    # The tests keep going inside the emulator after Gradle is gone.
+    timeout 20 adb shell am force-stop app.guardianmode.debug >/dev/null 2>&1 || true
+    adb_state="$(timeout 20 adb devices 2>&1 | tail -n +2 | tr '\n' ' ')"
+    echo "::error title=$(basename "$OUT") instrumented::stopped the instrumented suite: ${stopped}. adb devices: ${adb_state:-no answer}"
+    break
+  fi
+done
+wait "$gradle_pid"
 rc=$?
-if [ $rc -eq 124 ]; then
-  last="$(grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null | tail -2 | tr '\n' ' ' | cut -c1-600)"
-  adb_state="$(timeout 20 adb devices 2>&1 | tail -n +2 | tr '\n' ' ')"
-  echo "::error title=$(basename "$OUT") instrumented::the instrumented suite was still running after 110 minutes and was stopped. Last test events: ${last:-none}. adb devices: ${adb_state:-no answer}"
-fi
+[ -n "$stopped" ] && rc=124
 [ $rc -eq 0 ] || status=1
 timeout 120 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
 kill "$diag_pid" 2>/dev/null || true

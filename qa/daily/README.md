@@ -19,6 +19,8 @@ Workflow `.github/workflows/nightly.yml` ("Daily tests"), 08:17 UTC, or by hand 
 | Audit | `npm audit` for the dashboard and functions | |
 | Report | Joins everything into `REPORT.md` and `results.json`, and updates the "Daily test report" issue | `qa/daily/report.py`, `publish_issue.py` |
 
+A device run can't hang: `run-device-suite.sh` stops the instrumented suite when no test starts or finishes for 20 minutes, after 110 minutes in all, or when the emulator stops answering adb (after pressing power from the emulator console once, and saying whether that woke it). Before each host check `device_checks.py` makes sure the emulator answers and cold-starts it if not; if it still doesn't, that is one failure (`emulatorAnswersAdb`) and the remaining checks are skipped.
+
 The report says what newly failed, which known bugs are still open (or now pass), which suites produced nothing (usually a compile error), coverage per area, the P0 cases still not automated, and measurements (APK size, memory, reboot-to-protection time).
 
 ## The daily check
@@ -42,7 +44,7 @@ Its PRs wait for Nate's "merge" like everything else.
   - Android device: `@KnownBug("S-03")` from `support/`
   - vitest / Playwright: `it.skipIf(!process.env.INCLUDE_KNOWN_BUGS)(...)`, with "[known bug S-17]" in the title
   - Gradle: `-PincludeKnownBugs=true` runs them locally.
-- **Device tests** use `support/DeviceRule` (fast setup, state reset, UI dump on failure), `EmulatorConsole` for real calls, and `StubApp` for the stand-ins. Stand-ins for remote-control apps aren't pre-installed; tests install them from `/data/local/tmp/stubs/<flavor>.apk`.
+- **Device tests** use `support/DeviceRule` (fast setup, state reset, time limits on every shell command and a 15-minute limit per test, the CPU kept awake, UI dump on failure), `EmulatorConsole` for real calls, and `StubApp` for the stand-ins. Stand-ins for remote-control apps aren't pre-installed; tests install them from `/data/local/tmp/stubs/<flavor>.apk`.
 
 ## Running pieces locally
 

@@ -61,7 +61,11 @@ jobs:
         run: printf '' > ~/.emulator_console_auth_token
       - name: Run on emulator
         uses: reactivecircus/android-emulator-runner@v2
+        # device_checks.py starts the emulator again by this name when it dies on a reboot.
+        env:
+          GUARDIAN_AVD: guardian-api${{ inputs.api-level || '36' }}
         with:
+          avd-name: guardian-api${{ inputs.api-level || '36' }}
           api-level: ${{ inputs.api-level || '36' }}
           target: google_apis
           arch: x86_64

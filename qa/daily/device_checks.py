@@ -94,6 +94,11 @@ def reboot() -> float:
         # again (so it never gets BOOT_COMPLETED) behind the home chooser: BOOT-API29 on
         # 2026-10-27. A phone isn't set up and restarted inside 10 s, so wait it out.
         time.sleep(15)
+    # The phone's log across the reboot, so an emulator that dies on it shows how far the
+    # shutdown got (and whether it began at all).
+    global reboot_log
+    reboot_log = Path("reboot-logcat.txt")
+    capture = subprocess.Popen(["adb", "logcat", "-v", "time", "-T", "1"], stdout=reboot_log.open("w"), stderr=subprocess.STDOUT)
     adb("reboot", ok=False)
     time.sleep(10)
     try:
@@ -101,46 +106,127 @@ def reboot() -> float:
     except subprocess.TimeoutExpired:
         # The phone never came back to adb. On the CI emulator that is the emulator process
         # dying on the reboot (gone from `adb devices`: the 10-30 and both 10-31 API 36 branch
-        # runs), not Guardian, so start it again: a cold boot is still a boot of the phone.
-        relaunch_emulator()
+        # runs, and 11-01's daily run), not Guardian, so start it again: a cold boot is still a
+        # boot of the phone.
+        relaunch_emulator("didn't come back from a reboot")
         completed = wait_for_boot(600)
+    finally:
+        capture.kill()
     after = boot_id()
     check(after != "" and after != before, f"the phone didn't reboot (boot id {before!r} before, {after!r} after)")
     return completed
 
 
-# The emulator's AVD name, read before any reboot so a lost emulator can be started again.
+# The emulator's AVD name, read before any check so a lost emulator can be started again.
 avd_name = ""
+# Set once the emulator couldn't be started again: every later check is skipped with this reason.
+emulator_gone = ""
+reboot_log: Path | None = None
 EMULATOR_OPTIONS = ["-no-window", "-gpu", "swiftshader_indirect", "-noaudio", "-no-boot-anim", "-camera-back", "none"]  # as android-emulator.yml
 
 
+def emulator_binary() -> str:
+    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    return str(Path(sdk_root) / "emulator" / "emulator") if sdk_root else (shutil.which("emulator") or "emulator")
+
+
+def run_quietly(cmd: list[str] | str, timeout: int = 30) -> str:
+    """A command's output, or "" when it fails or doesn't finish in time."""
+    try:
+        res = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout)
+        return res.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        return ""
+
+
+def find_avd_name() -> str:
+    """The running emulator's AVD name. android-emulator.yml names the AVD and passes the name
+    in GUARDIAN_AVD; failing that, the emulator console (`adb emu avd name`, which printed
+    nothing on 11-01's API 36 run, so the emulator lost on a reboot couldn't be started
+    again), then the only AVD `emulator -list-avds` knows."""
+    name = os.environ.get("GUARDIAN_AVD", "").strip()
+    if name:
+        print(f"emulator AVD: {name} (from the workflow)")
+        return name
+    said = run_quietly(["adb", "emu", "avd", "name"])
+    name = next((line.strip() for line in said.splitlines() if line.strip() and line.strip() not in ("OK",) and not line.startswith("KO")), "")
+    if name:
+        print(f"emulator AVD: {name} (from the emulator console)")
+        return name
+    avds = [line.strip() for line in run_quietly([emulator_binary(), "-list-avds"]).splitlines() if line.strip() and " " not in line.strip()]
+    if len(avds) == 1:
+        print(f"emulator AVD: {avds[0]} (the only one emulator -list-avds knows)")
+        return avds[0]
+    print(f"emulator AVD: unknown (console said {said[:120]!r}; -list-avds said {avds})")
+    return ""
+
+
 def host_diagnostics() -> str:
-    """The CI machine's memory, disk, kernel messages about killed processes, and emulator processes."""
+    """What the CI machine and the emulator looked like: memory, disk, the kernel's messages
+    about killed or crashed processes (and whether its log could be read at all), emulator
+    processes and crash reports, the emulator's version, and the phone's last log lines
+    before a reboot."""
     def run(cmd: str) -> str:
         try:
             return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=20).stdout.strip()
         except subprocess.TimeoutExpired:
             return "timed out"
+    kernel_lines = run("sudo -n dmesg 2>/dev/null | wc -l")
+    kernel = run('sudo -n dmesg 2>/dev/null | grep -iE "out of memory|killed process|segfault|traps:|general protection|qemu|emulator" | tail -3')
+    crashes = run("find /tmp ~/.android -maxdepth 4 \\( -name '*.dmp' -o -name 'emu-crash*' \\) -mmin -240 2>/dev/null | head -4 | tr '\\n' ' '")
+    phone_log = ""
+    if reboot_log is not None and reboot_log.exists():
+        lines = [line for line in reboot_log.read_text(errors="replace").splitlines() if line.strip()]
+        phone_log = " / ".join(line[:160] for line in lines[-5:])
     return (f"mem: {run('free -m | sed -n 2p')}; disk: {run('df -h . | tail -1')}; "
-            f"kernel: {run('sudo -n dmesg 2>/dev/null | grep -iE \"out of memory|killed process|qemu\" | tail -3') or 'nothing'}; "
-            f"emulator processes: {run('ps -eo pid,rss,args | grep [q]emu-system | cut -c1-120') or 'none'}; adb: {run('adb devices | tail -n +2 | tr -s \"\\n\" \" \"')}")
+            f"kernel ({kernel_lines or '?'} lines readable): {kernel or 'nothing about it'}; "
+            f"emulator processes: {run('ps -eo pid,rss,args | grep [q]emu-system | cut -c1-120') or 'none'}; "
+            f"crash reports: {crashes or 'none'}; emulator: {run(f'{emulator_binary()} -version 2>/dev/null | head -1') or '?'}; "
+            f"adb: {run('adb devices | tail -n +2 | tr -s \"\\n\" \" \"')}; "
+            f"phone's last log lines before the reboot: {phone_log or 'none'}")
 
 
-def relaunch_emulator() -> None:
-    """Starts the emulator again after it died on a reboot, cold (no snapshot), with the
-    options the workflow starts it with. Says so in an annotation and the measurements, with
-    what the machine looked like, so a lost emulator is never silent."""
+def relaunch_emulator(why: str) -> None:
+    """Starts the emulator again after it died or stopped answering, cold (no snapshot),
+    with the options the workflow starts it with. Says so in an annotation and the
+    measurements, with what the machine looked like, so a lost emulator is never silent."""
     diag = host_diagnostics()
-    print(f"::warning title=device-host emulator::the emulator didn't come back from a reboot; starting it again. {diag[:3000]}")
-    measurements["Emulator lost on a reboot and started again"] = diag[:600]
-    check(avd_name != "", f"the emulator was lost on a reboot and its AVD name wasn't known, so it can't be started again ({diag})")
-    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
-    binary = str(Path(sdk_root) / "emulator" / "emulator") if sdk_root else (shutil.which("emulator") or "emulator")
+    print(f"::warning title=device-host emulator::the emulator {why}; starting it again. {diag[:3000]}")
+    measurements[f"Emulator {why}, started again"] = diag[:900]
+    check(avd_name != "", f"the emulator {why} and its AVD name wasn't known, so it can't be started again ({diag})")
     subprocess.run(["pkill", "-9", "-f", "qemu-system"], capture_output=True)
     time.sleep(3)
+    subprocess.run(["adb", "kill-server"], capture_output=True, timeout=20)
     log = open("emulator-relaunch.log", "w")  # noqa: SIM115 - the emulator outlives this function
-    subprocess.Popen([binary, "-avd", avd_name, "-port", "5554", *EMULATOR_OPTIONS, "-no-snapshot-load", "-no-snapshot-save"],
+    subprocess.Popen([emulator_binary(), "-avd", avd_name, "-port", "5554", *EMULATOR_OPTIONS, "-no-snapshot-load", "-no-snapshot-save"],
                      stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+
+
+def emulator_answers() -> bool:
+    try:
+        return subprocess.run(["adb", "shell", "true"], capture_output=True, timeout=30).returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def ensure_emulator() -> None:
+    """Before each check: the emulator answers adb, or is started again cold. After the
+    11-01 API 29 suite hung, the emulator answered nothing and all 13 checks failed one by
+    one on a 60 s adb timeout; on the API 36 run, the check after a lost reboot failed on
+    "device not found". Now such a run restarts the emulator once, or reports one failure."""
+    global emulator_gone
+    if emulator_answers():
+        return
+    try:
+        relaunch_emulator("wasn't answering adb before a check")
+        wait_for_boot(600)
+    except (subprocess.TimeoutExpired, CheckFailed, RuntimeError, OSError) as e:
+        emulator_gone = f"the emulator stopped answering adb and couldn't be brought back with a cold restart ({e})"
+        raise CheckFailed(emulator_gone) from e
+    if not emulator_answers():
+        emulator_gone = "the emulator stopped answering adb and didn't answer after a cold restart either"
+        raise CheckFailed(emulator_gone)
+    sh("input keyevent 82")
 
 
 def sdk() -> int:
@@ -1005,8 +1091,7 @@ def main() -> int:
 
     if not args.no_device:
         global avd_name
-        avd_name = next(iter(adb("emu", "avd", "name", ok=False, timeout=30).split()), "")
-        print(f"emulator AVD: {avd_name or 'unknown'}")
+        avd_name = find_avd_name()
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
     current = {"name": "", "start": time.time()}
@@ -1023,7 +1108,20 @@ def main() -> int:
         if needs_device and args.no_device:
             continue
         current.update(name=name, start=time.time())
+        if needs_device and not emulator_gone:
+            try:
+                ensure_emulator()
+            except Exception as e:  # noqa: BLE001 - recorded once, as its own failure
+                failures += 1
+                lost = ET.SubElement(suite, "testcase", classname="DeviceChecks", name="emulatorAnswersAdb")
+                ET.SubElement(lost, "failure", message=str(e)[:1500]).text = traceback.format_exc()
+                print(f"FAIL emulatorAnswersAdb: {e}")
+                print(f"::error title={args.suite} emulator::{str(e)[:3500].replace('%', '%25').replace(chr(10), '%0A')}; the checks from {name} on are skipped")
         case = ET.SubElement(suite, "testcase", classname="DeviceChecks", name=name)
+        if needs_device and emulator_gone:
+            ET.SubElement(case, "skipped", message=f"not run: {emulator_gone[:300]}")
+            print(f"SKIP {name}: the emulator is gone")
+            continue
         start = time.time()
         try:
             fn(apk=args.apk)
@@ -1050,7 +1148,7 @@ def main() -> int:
     suite.set("failures", str(failures))
     ET.ElementTree(suite).write(out / f"TEST-{args.suite}.xml", encoding="utf-8", xml_declaration=True)
     (out / f"measurements-{args.suite}.json").write_text(json.dumps(measurements, indent=2), encoding="utf-8")
-    if not args.no_device:
+    if not args.no_device and not emulator_gone:
         sh(f"pm uninstall {PKG}")
     return 0
 
