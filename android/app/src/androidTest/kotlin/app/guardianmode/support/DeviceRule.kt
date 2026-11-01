@@ -8,6 +8,10 @@ import android.app.NotificationManager
 import android.content.ContentProviderOperation
 import android.content.ContentUris
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.Process
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
@@ -33,9 +37,16 @@ import app.guardianmode.protection.GuardianService
 import app.guardianmode.protection.Notifications
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
+import org.junit.internal.runners.statements.FailOnTimeout
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
+import org.junit.runners.model.Statement
 import java.util.TimeZone
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.regex.Pattern
 
 /**
@@ -46,6 +57,10 @@ import java.util.regex.Pattern
  * Afterwards it hangs up every call, uninstalls stand-ins the test installed, puts back
  * stand-ins it removed, deletes phone contacts it added, restores the time zone and
  * every permission, and presses Home, so tests stay independent.
+ *
+ * Nothing it does can wait forever: every shell command and main-thread call has a time limit,
+ * each test has [TEST_LIMIT_MINUTES], and the CPU is kept awake while a test runs (see
+ * [keepCpuAwake]), so one stuck step fails its test instead of hanging the whole suite.
  *
  * Runtime permissions are never revoked here: `pm revoke` kills the app's process, and
  * the tests run inside it. Cases that need a revoked runtime permission (Contacts,
@@ -66,8 +81,19 @@ class DeviceRule(
     private val removed = linkedSetOf<StubApp>()
     private val contactIds = mutableListOf<Long>()
     private var originalTimeZone: String? = null
+    private var cpuAwake: PowerManager.WakeLock? = null
+
+    /**
+     * Runs the test body with a time limit. A body that is still running after
+     * [TEST_LIMIT_MINUTES] fails with the stack of where it was stuck (device_diagnostics.py
+     * turns that into the annotation's file and line), and the next test starts. The longest
+     * test takes about 5 minutes.
+     */
+    override fun apply(base: Statement, description: Description): Statement =
+        super.apply(FailOnTimeout.builder().withTimeout(TEST_LIMIT_MINUTES, TimeUnit.MINUTES).build(base), description)
 
     override fun starting(description: Description) {
+        keepCpuAwake()
         wake()
         // Long waits (a 1-minute "long call") must not let the screen time out underneath.
         shell("svc power stayon true")
@@ -89,9 +115,11 @@ class DeviceRule(
     }
 
     override fun failed(e: Throwable, description: Description) {
-        dumpUi("${description.methodName} failed")
+        // Time-limited, like everything here: a test that timed out may have left the phone in
+        // the state that stuck it, and the diagnostics must not get stuck on it too.
+        runCatching { withLimit(30_000) { dumpUi("${description.methodName} failed") } }
         // One line per failure that CI turns into an annotation (qa/daily/run-device-suite.sh).
-        runCatching { Log.i(DIAG, "${description.className.substringAfterLast('.')}.${description.methodName}: ${diagnostics()}") }
+        runCatching { withLimit(90_000) { Log.i(DIAG, "${description.className.substringAfterLast('.')}.${description.methodName}: ${diagnostics()}") } }
             .onFailure { Log.w(DIAG, "${description.methodName}: diagnostics failed: $it") }
     }
 
@@ -102,9 +130,44 @@ class DeviceRule(
         runCatching { deleteContacts() }
         originalTimeZone?.let { runCatching { setTimeZone(it) } }
         if (grantAll) runCatching { grantEverything() }
-        wake()
+        runCatching { wake() }
         repeat(2) { device.pressBack() }
         device.pressHome()
+        cpuAwake?.let { lock -> runCatching { if (lock.isHeld) lock.release() } }
+        cpuAwake = null
+    }
+
+    /**
+     * Holds a partial wake lock (CPU on, screen free to go off) while the test runs.
+     * gm_scam_004 turns the screen off during a call and waits up to 100 s for the long-call
+     * record. On daily run 41303524589 (11-01, API 29) it started at 12:45:19 and never
+     * finished, and from then on the emulator answered no adb command at all (while `adb
+     * devices` still listed it), so every host check timed out: the guest itself had stopped,
+     * not just the test. The likeliest cause is the emulator going to sleep with the screen off
+     * and nothing holding the CPU, which nothing inside it can wake from (the 10-30 and 10-31
+     * API 29 hangs fit too). run-device-suite.sh presses power from the emulator console
+     * if adb stops answering mid-run and says whether that brought it back, which tells sleep
+     * from a crash. Released in [finished], and by Android after [TEST_LIMIT_MINUTES] at the latest.
+     */
+    private fun keepCpuAwake() {
+        runCatching {
+            cpuAwake = context.getSystemService(PowerManager::class.java)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GuardianTest:DeviceRule")
+                .apply { setReferenceCounted(false); acquire(TimeUnit.MINUTES.toMillis(TEST_LIMIT_MINUTES + 2)) }
+        }.onFailure { Log.w(TAG, "couldn't hold a wake lock for the test: $it") }
+    }
+
+    /** Runs [block] on a worker thread and gives up on it after [timeoutMs]. */
+    fun <T> withLimit(timeoutMs: Long, block: () -> T): T {
+        val result = WORKERS.submit(Callable { block() })
+        return try {
+            result.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            result.cancel(true)
+            throw IllegalStateException("didn't finish within ${timeoutMs / 1000} s", e)
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw e.cause ?: e
+        }
     }
 
     /**
@@ -172,7 +235,26 @@ class DeviceRule(
 
     // ---- Device ----
 
-    fun shell(command: String): String = device.executeShellCommand(command)
+    /**
+     * Runs [command] as the shell, as adb would, and returns what it printed. UiDevice's own
+     * executeShellCommand reads until the command ends with no time limit, so a command that
+     * never ends (or a phone that stops answering) would stop the test, and the suite, there.
+     * This one fails after [timeoutMs] instead, saying which command it was.
+     */
+    fun shell(command: String, timeoutMs: Long = SHELL_LIMIT): String {
+        val pfd = instrumentation.uiAutomation.executeShellCommand(command)
+        val output = WORKERS.submit(Callable { ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes().toString(Charsets.UTF_8) } })
+        return try {
+            output.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            output.cancel(true)
+            runCatching { pfd.close() }
+            Log.w(TAG, "shell `${command.take(80)}` didn't finish within ${timeoutMs / 1000} s")
+            throw IllegalStateException("shell `${command.take(80)}` didn't finish within ${timeoutMs / 1000} s")
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw e.cause ?: e
+        }
+    }
 
     fun grantEverything() {
         listOf(
@@ -958,11 +1040,15 @@ class DeviceRule(
 
     // ---- Diagnostics ----
 
+    /** The resumed activity in this process; null as well when the main thread doesn't answer within 5 s. */
     fun resumedActivity(): Activity? {
         var found: Activity? = null
-        instrumentation.runOnMainSync {
-            found = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull()
+        val done = CountDownLatch(1)
+        Handler(Looper.getMainLooper()).post {
+            runCatching { found = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull() }
+            done.countDown()
         }
+        if (!done.await(5, TimeUnit.SECONDS)) Log.w(TAG, "main thread didn't answer within 5 s")
         return found
     }
 
@@ -1070,6 +1156,12 @@ class DeviceRule(
         private val DIAG_TAGS = listOf("GuardianBrain", "CardLauncher", "GuardianScreening", "GuardianService", "AndroidRuntime", TAG)
         const val CALL_OUTGOING = 2
         const val TIMEOUT = 8_000L
+        /** A test body still running after this fails (see [apply]). */
+        const val TEST_LIMIT_MINUTES = 15L
+        /** The longest any one shell command may take ([shell]). */
+        const val SHELL_LIMIT = 90_000L
+        /** Threads for [shell] and [withLimit]; daemon threads, so one left stuck holds nothing up. */
+        private val WORKERS = Executors.newCachedThreadPool { r -> Thread(r, "DeviceRule-worker").apply { isDaemon = true } }
         /** How long to watch for something that must not appear. */
         const val QUIET = 5_000L
         /** Time for a phone-state broadcast to reach the brain after the registry changes. */

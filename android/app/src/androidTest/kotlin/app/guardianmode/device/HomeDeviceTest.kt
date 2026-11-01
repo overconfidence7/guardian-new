@@ -85,18 +85,38 @@ class HomeDeviceTest {
         }
     }
 
+    /**
+     * The shield chip says [label] within [CHIP_WAIT_MS]. On a miss the message says what the
+     * chip read, what Guardian itself thinks and whether UiAutomator could read the window at
+     * all, which tells a chip that didn't follow the state from a screen that couldn't be read.
+     * On the 11-01 daily run (API 36) "Check me" wasn't found within 8 s of Home after usage
+     * access was denied, yet the screen dumped right after the failure showed the chip saying
+     * "Check me" with nothing pressed in between, and UiAutomator had logged "Active window
+     * root not found": the chip had followed the state; the window couldn't be read in time.
+     */
+    private fun assertChip(label: String) {
+        if (rule.waitFor(chip(label), CHIP_WAIT_MS)) return
+        val reads = runCatching { rule.chipLabel() }.getOrNull()
+        val attention = runCatching { rule.container.protection.needsAttention() }.getOrNull()
+        val readable = runCatching { rule.instrumentation.uiAutomation.rootInActiveWindow != null }.getOrNull()
+        assertWithMessage(
+            "shield chip says \"$label\" (chip reads ${reads?.let { "\"$it\"" }}; Guardian: needsAttention=$attention " +
+                "paused=${rule.state.isPaused(System.currentTimeMillis())}; active window readable=$readable)",
+        ).that(rule.has(chip(label))).isTrue()
+    }
+
     @Test fun gm_home_006_shieldChipFollowsTheState() {
         rule.goHome()
-        assertThat(rule.waitFor(chip("Protected"))).isTrue()
+        assertChip("Protected")
 
         rule.shell("appops set ${rule.pkg} GET_USAGE_STATS deny")
         rule.goHome()
-        assertThat(rule.waitFor(chip("Check me"))).isTrue()
+        assertChip("Check me")
 
         rule.grantEverything()
         rule.updateState { it.copy(pausedUntil = System.currentTimeMillis() + 60 * 60_000L) }
         rule.goHome()
-        assertThat(rule.waitFor(chip("Paused"))).isTrue()
+        assertChip("Paused")
 
         rule.tapDesc("Paused. What my family can see.")
         assertThat(rule.waitText("What my family can see")).isTrue()
@@ -159,5 +179,7 @@ class HomeDeviceTest {
 
     private companion object {
         const val TAG = "HomeDeviceTest"
+        /** A busy emulator can leave the window unreadable for several seconds after Home. */
+        const val CHIP_WAIT_MS = 15_000L
     }
 }
