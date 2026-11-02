@@ -118,19 +118,26 @@ class LockDeviceTest {
 
     @Test fun gm_lock_030_gm_perf_004_settingsCoveredQuicklyAtLocked() {
         rule.setLock(LockLevel.LOCKED)
+        val start = System.currentTimeMillis()
         val t = startCovered("am start -a android.settings.SETTINGS")
         assertWithMessage("Settings covered").that(t).isNotNull()
         assertThat(rule.seen(By.text("This phone is set up to keep things simple. To open Settings, enter the code."))).isTrue()
         assertThat(rule.seen(By.text("Your code"))).isTrue()
         assertThat(rule.seen(By.text("Unlock"))).isTrue()
         assertThat(rule.seen(By.text("Go to my home screen"))).isTrue()
-        // The spec's target is "within a second" (S-10), on a phone. Here it's measured from
-        // the start command to the card being readable through UiAutomator on a CI emulator
-        // (no GPU, shared CPU), which adds seconds of noise, so the assertion is a CI bar that
-        // catches a cover that is broken or badly slow; the log line (and the report) carries
-        // the real number to compare with the 1-second target.
-        Log.i(TAG, "GM-LOCK-030 / GM-PERF-004 cover latency: $t ms (spec target 1000 ms, CI bar $COVER_CI_BAR_MS ms)")
-        assertWithMessage("cover latency (ms)").that(t).isAtMost(COVER_CI_BAR_MS)
+        // The case measures from the Settings window appearing to the card covering it (spec
+        // target: within a second, S-10). Usage access timestamps both, so this is the app's own
+        // latency. The time until UiAutomator can read the card also counts the emulator's
+        // start-up of Settings and UiAutomator's read delay ("Active window root not found"
+        // cost seconds on API 29 on 2026-11-02), so it only gets a loose bar for a broken cover.
+        val resumes = rule.resumesSince(start - 500)
+        val settingsAt = resumes.firstOrNull { it.first == "com.android.settings" }?.third
+        val cardAt = settingsAt?.let { s -> resumes.firstOrNull { it.first == rule.pkg && it.second.endsWith("GuardianCardActivity") && it.third >= s }?.third }
+        val cover = if (settingsAt != null && cardAt != null) cardAt - settingsAt else null
+        Log.i(TAG, "GM-LOCK-030 / GM-PERF-004 cover latency: ${cover ?: "?"} ms from Settings to the card (spec target 1000 ms, CI bar $COVER_CI_BAR_MS ms); readable after $t ms; resumes=${resumes.map { "${it.first.substringAfterLast('.')}/${it.second.substringAfterLast('.')}@+${it.third - start}" }}")
+        assertWithMessage("Settings and the card both seen resuming (resumes since start: $resumes)").that(cover).isNotNull()
+        assertWithMessage("cover latency, Settings to card (ms)").that(cover).isAtMost(COVER_CI_BAR_MS)
+        assertWithMessage("card readable after start (ms)").that(t).isAtMost(READABLE_CI_BAR_MS)
     }
 
     @Test fun gm_lock_031_everyWayIntoSettingsIsCovered() {
@@ -326,5 +333,6 @@ class LockDeviceTest {
     private companion object {
         const val TAG = "LockDeviceTest"
         const val COVER_CI_BAR_MS = 5_000L
+        const val READABLE_CI_BAR_MS = 12_000L
     }
 }

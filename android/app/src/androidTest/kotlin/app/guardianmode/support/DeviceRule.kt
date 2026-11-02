@@ -1105,6 +1105,23 @@ class DeviceRule(
         append("screen=${runCatching { screenSummary().take(1_500) }.getOrDefault("?")}")
     }
 
+    /**
+     * Activity resumes since [sinceMs] (wall clock) as (package, class, time), oldest first, as
+     * Usage access reports them. Lets a test time the app itself (one window to the next)
+     * without UiAutomator's read delay, which on a CI emulator can add seconds.
+     */
+    fun resumesSince(sinceMs: Long): List<Triple<String, String, Long>> = runCatching {
+        val usage = context.getSystemService(UsageStatsManager::class.java)
+        val events = usage.queryEvents(sinceMs, System.currentTimeMillis() + 1_000)
+        val e = UsageEvents.Event()
+        val out = mutableListOf<Triple<String, String, Long>>()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) out += Triple(e.packageName, e.className ?: "", e.timeStamp)
+        }
+        out.toList()
+    }.getOrDefault(emptyList())
+
     /** Apps brought to the front in the last [windowMs], as Usage access reports them to Guardian. */
     fun recentResumes(windowMs: Long): List<String> = runCatching {
         val usage = context.getSystemService(UsageStatsManager::class.java)
