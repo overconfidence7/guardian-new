@@ -58,7 +58,11 @@ class CloudSync(
     private val store: LocalStore,
     private val scope: CoroutineScope,
 ) {
-    private val app: FirebaseApp by lazy { initFirebase() }
+    // Nothing Firebase is loaded until something here needs it. Before pairing nothing does,
+    // and the SDKs' setup (Messaging's eager start, Firestore's local cache) is a large part
+    // of the home screen's memory on a budget phone (GM-PERF-007).
+    private val appDelegate = lazy { initFirebase() }
+    private val app: FirebaseApp by appDelegate
     private val auth by lazy { FirebaseAuth.getInstance(app) }
     private val db by lazy { FirebaseFirestore.getInstance(app) }
     private val storage by lazy { FirebaseStorage.getInstance(app) }
@@ -97,9 +101,20 @@ class CloudSync(
         return created
     }
 
-    /** Firebase must exist before Android delivers any push message to the app. */
-    fun initialize() {
+    /** True once Firebase has been set up in this process. Stays false on an unpaired phone. */
+    val firebaseInitialized: Boolean get() = appDelegate.isInitialized()
+
+    /**
+     * Sets Firebase up when, and only when, the phone is paired. Firebase must exist before
+     * Android delivers a push message, and a paired phone has a token out there, so this runs
+     * at app start and the moment pairing completes ([claimInvite] calls [start]). An unpaired
+     * phone never gets this far: the welcome and consent screens don't touch Firebase, and the
+     * setup-code screen brings up Auth and Functions itself the first time it needs them.
+     */
+    fun initializeIfPaired(): Boolean {
+        store.current.pairing ?: return false
         app
+        return true
     }
 
     private suspend fun ensureSignedIn(): String {
@@ -143,6 +158,7 @@ class CloudSync(
     /** Starts listeners and the outbox uploader once the phone is paired. Safe to call repeatedly. */
     fun start() {
         val pairing = store.current.pairing ?: return
+        initializeIfPaired()
         synchronized(this) {
             if (started) return
             started = true

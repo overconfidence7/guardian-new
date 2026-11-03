@@ -25,8 +25,8 @@ Covered by GM-RACC-001. Add the real phone.
 **Expect:** janky frames under 5%. Report the numbers.
 
 ### GM-PERF-007 · Memory  `P1`
-**Steps:** `adb shell dumpsys meminfo app.guardianmode.debug` on home, with 30 photos, and after an hour idle.
-**Expect:** report PSS. Flag anything over 150 MB on the budget emulator, and any growth over the hour (leak).
+**Steps:** install the shrunk build (`android: ./gradlew assembleBenchmark`, `app/build/outputs/apk/benchmark/app-benchmark.apk`: release's R8 and resource shrinking under the debug package name and key), finish setup, `adb shell dumpsys meminfo app.guardianmode.debug` after 5 s on home, then with 30 photos, and after an hour idle. The debug APK carries every class of every library, so its number is not the budget's.
+**Expect:** TOTAL PSS under 150 MB on the budget emulator on home (the daily host check `gm_perf_007_homeScreenMemory` measures this), and no growth over the hour (leak). Before pairing, nothing Firebase is set up (Messaging, Firestore's cache and Auth come up the moment pairing completes, or at app start on a paired phone); a JVM test with this id proves that part.
 
 ### GM-PERF-008 · APK size  `P2`
 **Expect:** record the test APK size (about 119 MB as of 2026-10-19) and say where the size comes from (`aapt2 dump` or Android Studio's APK analyzer: ML Kit barcode models, Firebase, Compose). Suggest what could shrink for a budget phone (for example ML Kit's unbundled model, or a release build with R8, which the Play build will use).
