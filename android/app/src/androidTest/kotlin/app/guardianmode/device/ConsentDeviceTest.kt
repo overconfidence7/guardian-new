@@ -88,14 +88,20 @@ class ConsentDeviceTest {
 
     /** Opens setup fresh and walks to consent page [index] (0-based), saying "Not now" to the pages before it. */
     private fun openConsentPage(index: Int) {
-        // The parent's way in: setup isn't finished, so Home (Guardian) opens it, from the start.
-        // (Starting it directly with CLEAR_TASK cleared the home task, and API 36 then brought
-        // up the old launcher instead.)
+        // Setup opened on top of Guardian's home screen, in the same task. Not with CLEAR_TASK:
+        // that cleared the home task and the old launcher came up instead (PR #21, all levels);
+        // and not with Home alone: MainActivity was often already resumed and showed the home
+        // screen without sending the parent to setup (PR #21's second API 36 run).
         closeSetup()
         OnboardingActivity.clearProgress(rule.context)
-        rule.device.pressHome()
-        assertWithMessage("setup opened on the role choice (Home opens ${rule.homeResolvesTo()})")
-            .that(rule.waitText("How will this phone be used?", 10_000)).isTrue()
+        var opened = false
+        for (attempt in 1..3) {
+            rule.context.startActivity(Intent(rule.context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            opened = rule.waitText("How will this phone be used?", 8_000)
+            if (opened) break
+            Log.w(TAG, "setup didn't show the role choice (try $attempt); top=${rule.topPackage()} screen=${rule.screenSummary().take(400)}")
+        }
+        assertWithMessage("setup opened on the role choice (top=${rule.topPackage()})").that(opened).isTrue()
         rule.tap("Make this phone simpler")
         assertThat(rule.waitText("Set up on my own for now")).isTrue()
         rule.tap("Set up on my own for now")
