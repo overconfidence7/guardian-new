@@ -35,7 +35,12 @@ class GuardianBrain(
 
     private val catalog = AppCatalog()
     private val screening = CallScreeningPolicy()
-    private val tracker = CallTracker(screenerSeesContacts = { capabilities.has(Capability.CONTACTS) })
+    // An unscreened call can only be read as a hidden number when Android actually consults
+    // Guardian, so the screening role is required too (S-13). Without it no call is screened,
+    // every call would otherwise look unknown, and a call from family would arm the cards.
+    private val tracker = CallTracker(
+        screenerSeesContacts = { capabilities.has(Capability.CALL_SCREENING) && capabilities.has(Capability.CONTACTS) },
+    )
     private val engine = TripwireEngine(
         config = { store.current.config },
         catalog = catalog,

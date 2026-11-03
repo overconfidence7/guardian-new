@@ -6,12 +6,5 @@
     "tests": [
       "gm_perf_007_homeScreenMemory"
     ]
-  },
-  "S-13": {
-    "title": "Family calls arm pause cards' contact check even when Guardian isn't the call screener (GuardianBrain.kt:38)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm"
-    ]
   }
 }

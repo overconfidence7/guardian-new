@@ -6,6 +6,7 @@ import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.data.LocalState
 import app.guardianmode.data.PhotoItem
+import app.guardianmode.protection.Features
 import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -32,6 +33,8 @@ data class HomeUi(
     val paused: Boolean,
     val paired: Boolean,
     val needsAttention: Boolean,
+    /** One calm line under the greeting when pause cards can't arm yet (GM-PAUSE-009), else null. */
+    val note: String? = null,
     val pendingHelper: app.guardianmode.data.HelperInfo? = null,
     /** A helper's risky change waiting for the parent's yes or no (docs/SECURITY.md §3). */
     val pendingRequest: RequestUi? = null,
@@ -58,6 +61,7 @@ object HomeModel {
         appLabel: (String) -> String? = { null },
         needsAttention: Boolean = false,
         requests: List<ChangeRequest> = emptyList(),
+        screeningRoleHeld: Boolean = true,
     ): HomeUi {
         val config = state.config
         val people = config.family.associateBy { it.id }
@@ -95,10 +99,22 @@ object HomeModel {
             paused = state.isPaused(now.toInstant().toEpochMilli()),
             paired = state.pairing != null,
             needsAttention = needsAttention,
+            note = if (pauseCardsWaitForScreening(state, screeningRoleHeld)) PAUSE_CARDS_WAIT_FOR_SCREENING else null,
             pendingHelper = state.helpers.firstOrNull { it.pending },
             pendingRequest = pendingRequest(state, requests, now.toInstant().toEpochMilli()),
         )
     }
+
+    /** Shown with "Check me" when Guardian isn't the phone's call screener (GM-PAUSE-009, GM-SCRN-009). */
+    const val PAUSE_CARDS_WAIT_FOR_SCREENING = "Pause cards stay off until Guardian screens your calls."
+
+    /**
+     * GM-PAUSE-009: an unscreened call is never read as unknown unless Guardian holds the
+     * call-screening role, so pause cards the parent agreed to can't arm until it does.
+     * True only while that's the case and pause cards are switched on.
+     */
+    fun pauseCardsWaitForScreening(state: LocalState, screeningRoleHeld: Boolean): Boolean =
+        state.consent[Features.PAUSE] == true && state.config.protection.pauseTripwires.enabled && !screeningRoleHeld
 
     /**
      * The oldest request from someone who is an approved helper right now. The name shown

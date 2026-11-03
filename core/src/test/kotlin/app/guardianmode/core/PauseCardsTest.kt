@@ -146,8 +146,8 @@ class PauseCardsTest {
     }
 
     /*
-     * GM-PAUSE-009 / suspect S-13. The four screening-role x READ_CONTACTS rows, wired the
-     * way GuardianBrain wires CallTracker today (screenerSeesContacts = READ_CONTACTS).
+     * GM-PAUSE-009 (was suspect S-13). The four screening-role x READ_CONTACTS rows, wired the
+     * way GuardianBrain wires CallTracker: screenerSeesContacts = role held AND READ_CONTACTS.
      */
 
     private fun armsAfter(phone: PhoneSim, number: String): Boolean {
@@ -168,23 +168,22 @@ class PauseCardsTest {
     }
 
     /**
-     * Current behavior, recorded for the report (S-13 confirmed by reading): with no
-     * screening role and Contacts granted, no screening result ever arrives, CallTracker
-     * treats every unscreened call as a hidden number, and a call from Sarah arms the
-     * cards. That breaks spec bar 4. The core contract ("unscreened + screener sees
-     * contacts = hidden number") is consistent; the bug is that GuardianBrain passes
-     * READ_CONTACTS alone as screenerSeesContacts without checking the screening role
-     * (android/.../protection/GuardianBrain.kt, `CallTracker(screenerSeesContacts = ...)`).
+     * Without the screening role Android never asks Guardian about a call, so an unscreened
+     * call can't be told from a contact and no call counts as unknown: neither Sarah nor a
+     * stranger arms the cards (spec bar 4 wins over coverage; the home chip says so).
      */
-    @Test fun gm_pause_009_noScreeningRoleContactsGranted_everyCallCountsAsUnknown() {
-        assertTrue(armsAfter(PhoneSim(PhoneSim.familyConfig(), contactsGranted = true, screeningRoleHeld = false), UNKNOWN))
-        assertTrue(
+    @Test fun gm_pause_009_noScreeningRoleContactsGranted_noCallCountsAsUnknown() {
+        assertFalse(
+            armsAfter(PhoneSim(PhoneSim.familyConfig(), contactsGranted = true, screeningRoleHeld = false), UNKNOWN),
+            "without the screening role an unknown call doesn't arm",
+        )
+        assertFalse(
             armsAfter(PhoneSim(PhoneSim.familyConfig(), contactsGranted = true, screeningRoleHeld = false), SARAH),
-            "S-13: Sarah arms the cards when the screening role isn't held",
+            "spec bar 4: Sarah never arms the cards, role or no role",
         )
     }
 
-    /** Current behavior: with neither, nothing is ever unknown, so the cards never arm (S-13). */
+    /** With neither the role nor Contacts, nothing is ever unknown, so the cards never arm. */
     @Test fun gm_pause_009_noScreeningRoleContactsDenied_nothingEverArms() {
         assertFalse(armsAfter(PhoneSim(PhoneSim.familyConfig(), contactsGranted = false, screeningRoleHeld = false), UNKNOWN))
         assertFalse(armsAfter(PhoneSim(PhoneSim.familyConfig(), contactsGranted = false, screeningRoleHeld = false), SARAH))

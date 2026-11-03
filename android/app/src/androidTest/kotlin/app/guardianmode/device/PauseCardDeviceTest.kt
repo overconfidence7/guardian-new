@@ -15,7 +15,6 @@ import app.guardianmode.support.DeviceFixtures.UNKNOWN_2
 import app.guardianmode.support.DeviceRule
 import app.guardianmode.support.DeviceRule.Companion.CARD_BAR_MS
 import app.guardianmode.support.EmulatorConsole
-import app.guardianmode.support.KnownBug
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -168,15 +167,17 @@ class PauseCardDeviceTest {
         assertThat(openAndTimeCard(StubApp.CHASE)).isNotNull()
     }
 
-    @Test fun gm_pause_009_screeningRoleNotHeldUnknownCallStillArms() {
+    /**
+     * Without the screening role Android never asks Guardian about a call, so an unscreened
+     * call can't be told from a contact and nothing counts as unknown (GuardianBrain wires
+     * CallTracker with role AND Contacts). The home chip tells the parent.
+     */
+    @Test fun gm_pause_009_screeningRoleNotHeldUnknownCallDoesNotArm() {
         rule.shell("cmd role remove-role-holder android.app.role.CALL_SCREENING ${rule.pkg}")
         shortUnknownCall()
-        // Contacts is granted, so an unscreened call counts as unknown (CallTracker).
-        assertThat(openAndTimeCard(StubApp.CHASE)).isNotNull()
+        assertNoCardFor(StubApp.CHASE)
     }
 
-    /** S-13: without the screening role and with Contacts on, every call counts as unknown. */
-    @KnownBug("S-13")
     @Test fun gm_pause_009_screeningRoleNotHeldFamilyCallDoesNotArm() {
         rule.setState(DeviceFixtures.familyState)
         rule.shell("cmd role remove-role-holder android.app.role.CALL_SCREENING ${rule.pkg}")

@@ -25,6 +25,7 @@ import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.HelperInfo
+import app.guardianmode.protection.Capability
 import app.guardianmode.protection.GuardianService
 import app.guardianmode.ui.help.HelpActivity
 import app.guardianmode.ui.home.AllAppsScreen
@@ -54,6 +55,8 @@ class MainActivity : ComponentActivity() {
     private val container get() = (application as GuardianApp).container
     private var destination by mutableStateOf(DEST_HOME)
     private var needsAttention by mutableStateOf(false)
+    /** Pause cards can't arm without the call-screening role; the home screen says so (GM-PAUSE-009). */
+    private var screeningRoleHeld by mutableStateOf(true)
     /** Where to go back to, and what to do, once the lock code is entered. */
     private var unlockReturn = DEST_HOME
     private var afterUnlock: (() -> Unit)? = null
@@ -72,7 +75,7 @@ class MainActivity : ComponentActivity() {
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
         // Home pressed while Guardian is already in front may not pause and resume it, so
         // re-check here too: a permission can be taken away without leaving the home screen.
-        if (container.store.current.onboardingDone) needsAttention = container.protection.needsAttention()
+        if (container.store.current.onboardingDone) refreshAttention()
         handlePauseRequest(intent)
     }
 
@@ -93,11 +96,16 @@ class MainActivity : ComponentActivity() {
             return
         }
         GuardianService.start(this)
-        needsAttention = container.protection.needsAttention()
+        refreshAttention()
         lifecycleScope.launch {
             container.protection.onUserActive()
             container.cloud.flushOutbox()
         }
+    }
+
+    private fun refreshAttention() {
+        needsAttention = container.protection.needsAttention()
+        screeningRoleHeld = container.capabilities.has(Capability.CALL_SCREENING)
     }
 
     @Composable
@@ -176,7 +184,7 @@ class MainActivity : ComponentActivity() {
                     actions = transparencyActions,
                 )
                 else -> HomeScreen(
-                    ui = HomeModel.build(state, now, ::appLabel, needsAttention, requests),
+                    ui = HomeModel.build(state, now, ::appLabel, needsAttention, requests, screeningRoleHeld),
                     now = now,
                     actions = homeActions,
                 )
