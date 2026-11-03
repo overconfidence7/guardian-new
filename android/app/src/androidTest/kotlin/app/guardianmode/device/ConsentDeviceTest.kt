@@ -88,20 +88,29 @@ class ConsentDeviceTest {
 
     /** Opens setup fresh and walks to consent page [index] (0-based), saying "Not now" to the pages before it. */
     private fun openConsentPage(index: Int) {
-        // Setup opened on top of Guardian's home screen, in the same task. Not with CLEAR_TASK:
-        // that cleared the home task and the old launcher came up instead (PR #21, all levels);
-        // and not with Home alone: MainActivity was often already resumed and showed the home
-        // screen without sending the parent to setup (PR #21's second API 36 run).
+        // Setup is opened by Guardian's home screen itself, as MainActivity does while setup isn't
+        // done. Not by pressing Home: when the home screen was already resumed, Home only brought
+        // it a new intent and it never re-read that setup isn't done. Not from the test's context
+        // either: with NEW_TASK nothing came up over the home screen (both on PR #21's API 36
+        // runs), and with CLEAR_TASK the home task was cleared and the old launcher came up.
         closeSetup()
         OnboardingActivity.clearProgress(rule.context)
         var opened = false
         for (attempt in 1..3) {
-            rule.context.startActivity(Intent(rule.context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            rule.device.pressHome()
+            rule.device.waitForIdle()
+            val home = rule.resumedActivity()
+            if (home != null) {
+                rule.withLimit(10_000) { rule.instrumentation.runOnMainSync { home.startActivity(Intent(home, OnboardingActivity::class.java)) } }
+            } else {
+                rule.context.startActivity(Intent(rule.context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
             opened = rule.waitText("How will this phone be used?", 8_000)
             if (opened) break
-            Log.w(TAG, "setup didn't show the role choice (try $attempt); top=${rule.topPackage()} screen=${rule.screenSummary().take(400)}")
+            Log.w(TAG, "setup didn't show the role choice (try $attempt, started from ${home?.javaClass?.simpleName}); " +
+                "top=${rule.topPackage()} resumed=${rule.resumedActivity()?.javaClass?.simpleName} screen=${rule.screenSummary().take(400)}")
         }
-        assertWithMessage("setup opened on the role choice (top=${rule.topPackage()})").that(opened).isTrue()
+        assertWithMessage("setup opened on the role choice (top=${rule.topPackage()}, resumed=${rule.resumedActivity()?.javaClass?.simpleName})").that(opened).isTrue()
         rule.tap("Make this phone simpler")
         assertThat(rule.waitText("Set up on my own for now")).isTrue()
         rule.tap("Set up on my own for now")
