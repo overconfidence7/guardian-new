@@ -859,7 +859,8 @@ def tap_until(text: str, then: str, tries: int = 3) -> bool:
 
 
 def answer_android_screens(page: str, ops: list[str]) -> list[str]:
-    """Taps "Turn on" on consent page [page], then answers Android as a parent saying yes would,
+    """Taps "Turn on" on the consent page whose "Step N of 6" is [page] (UI dumps on API 36
+    don't always carry the page title: page 4's was missing on 11-03), then answers Android as a parent saying yes would,
     until Guardian says "All set": Allow on a permission dialog; on a Settings page the switch
     (granted with appops from [ops], in order, since where the switch sits differs per level)
     and Back; Continue on Guardian's checklist for the next item. Returns what Android showed,
@@ -924,33 +925,33 @@ def consent_android_screens(apk: str, **_) -> None:
     # A tap right after a cold start can be lost (on 11-03's API 29 run the role choice stayed
     # after one), so each step is tapped again until the next screen shows.
     check(tap_until("Make this phone simpler", "Make your phone easier to use."), f"Welcome didn't follow: {screen_words(PKG)}")
-    check(tap_until("Set up on my own for now", "A simpler home screen"), f"page 1 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Set up on my own for now", "Step 1 of 6"), f"page 1 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-004: page 1 asks only for Phone calls (the home role is held).
-    shown = answer_android_screens("A simpler home screen", [])
+    shown = answer_android_screens("Step 1 of 6", [])
     measurements["Setup page 1: what Android showed"] = " / ".join(shown) or "nothing"
     check(len(shown) == 1 and shown[0].startswith("dialog:") and "phone calls" in shown[0].lower(),
           f"page 1 should show Android's \"make and manage phone calls\" dialog once; it showed {shown}")
     _, granted = requested_and_granted()
     check("android.permission.CALL_PHONE" in granted, "Phone calls not granted after Allow")
-    check(tap_until("Next", "Pause before sending money"), f"page 2 didn't follow: {screen_words(PKG)}")
-    check(tap_until("Not now", "Quiet unknown callers"), f"page 3 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Next", "Step 2 of 6"), f"page 2 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Step 3 of 6"), f"page 3 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-007: phone state and contacts (the screening role is held). Phone state is in the
     # same group as Phone calls, which page 1 got, so Android may grant it without asking.
-    shown = answer_android_screens("Quiet unknown callers", [])
+    shown = answer_android_screens("Step 3 of 6", [])
     measurements["Setup page 3: what Android showed"] = " / ".join(shown) or "nothing"
     _, granted = requested_and_granted()
     check({"android.permission.READ_PHONE_STATE", "android.permission.READ_CONTACTS"} <= granted,
           f"phone state and contacts not both granted after Allow; Android showed {shown}")
     check(any(s.startswith("dialog:") and "contacts" in s.lower() for s in shown), f"no Contacts dialog on page 3; Android showed {shown}")
     check(all(s.startswith("dialog:") for s in shown), f"page 3 opened something besides permission dialogs: {shown}")
-    check(tap_until("Next", 'A daily "I\'m OK"'), f"page 4 didn't follow: {screen_words(PKG)}")
-    check(tap_until("Not now", "Reminders"), f"page 5 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Next", "Step 4 of 6"), f"page 4 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Step 5 of 6"), f"page 5 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-009: notifications (API 33+), alarms (31+), full screen (34+), each on its own screen.
     ops = list(reminder_ops)
-    shown = answer_android_screens("Reminders", ops)
+    shown = answer_android_screens("Step 5 of 6", ops)
     measurements["Setup page 5: what Android showed"] = " / ".join(shown) or "nothing"
     dialogs = [s for s in shown if s.startswith("dialog:")]
     settings = [s for s in shown if s.startswith("settings:")]
