@@ -970,16 +970,21 @@ def consent_android_screens(apk: str, **_) -> None:
 
     # GM-CONS-009: notifications (API 33+), alarms (31+), full screen (34+), each on its own screen.
     ops = list(reminder_ops)
+    # On the 11-03 API 36 run notifications were already allowed by page 5 (nothing in setup
+    # had asked), so whether Android must ask is read first.
+    _, granted = requested_and_granted()
+    notifications_before = "android.permission.POST_NOTIFICATIONS" in granted
+    measurements["Setup page 5: notifications already allowed"] = str(notifications_before)
     shown = answer_android_screens("Step 5 of 6", ops)
     measurements["Setup page 5: what Android showed"] = " / ".join(shown) or "nothing"
     dialogs = [s for s in shown if s.startswith("dialog:")]
     settings = [s for s in shown if s.startswith("settings:")]
-    if level >= 33:
+    if level >= 33 and not notifications_before:
         check(len(dialogs) == 1 and "notifications" in dialogs[0].lower(), f"expected one notifications dialog on API {level}; Android showed {shown}")
         _, granted = requested_and_granted()
         check("android.permission.POST_NOTIFICATIONS" in granted, "notifications not granted after Allow")
     else:
-        check(not dialogs, f"API {level} needs no notifications dialog; Android showed {shown}")
+        check(not dialogs, f"API {level} needs no notifications dialog (allowed before: {notifications_before}); Android showed {shown}")
     check(len(settings) == len(reminder_ops) and not ops,
           f"expected a Settings screen for each of {reminder_ops} on API {level}; Android showed {shown}")
     check(all("Guardian Mode" in s for s in settings), f"a Settings screen wasn't Guardian's own: {settings}")

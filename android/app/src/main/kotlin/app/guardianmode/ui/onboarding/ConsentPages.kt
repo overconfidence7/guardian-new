@@ -1,6 +1,5 @@
 package app.guardianmode.ui.onboarding
 
-import android.os.Build
 import app.guardianmode.protection.Capability
 import app.guardianmode.protection.Features
 
@@ -70,12 +69,7 @@ object ConsentPages {
     fun instruction(c: Capability): String = when (c) {
         Capability.HOME_APP -> "Choose Guardian Mode, then tap \"Set as default\"."
         Capability.USAGE_ACCESS -> "Find Guardian Mode in the list and turn its switch on. Then press Back."
-        // Android 11 and later ignore which app asked and open the list of apps (GM-CONS-006).
-        Capability.OVERLAY -> if (Build.VERSION.SDK_INT >= 30) {
-            "Tap Guardian Mode in the list, then turn on \"Allow display over other apps\". Then press Back."
-        } else {
-            "Turn on \"Allow display over other apps\". Then press Back."
-        }
+        Capability.OVERLAY -> "Turn on \"Allow display over other apps\". Then press Back."
         Capability.CALL_SCREENING -> "Choose Guardian Mode, then tap \"Set as default\"."
         Capability.PHONE_STATE -> "Tap \"Allow\"."
         Capability.CONTACTS -> "Tap \"Allow\"."
