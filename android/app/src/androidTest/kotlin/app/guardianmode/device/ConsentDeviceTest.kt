@@ -67,26 +67,35 @@ class ConsentDeviceTest {
         rule.instrumentation.removeMonitor(recorder)
         rule.updateState { it.copy(onboardingDone = true) }
         OnboardingActivity.clearProgress(rule.context)
+        closeSetup()
+    }
+
+    /** Finishes every setup screen this process has open. */
+    private fun closeSetup() {
         runCatching {
             rule.withLimit(10_000) {
                 rule.instrumentation.runOnMainSync {
                     val registry = ActivityLifecycleMonitorRegistry.getInstance()
                     Stage.values().flatMap { registry.getActivitiesInStage(it) }
-                        .filterIsInstance<OnboardingActivity>().forEach { it.finish() }
+                        .filterIsInstance<OnboardingActivity>().distinct().forEach { it.finish() }
                 }
             }
         }.onFailure { Log.w(TAG, "couldn't close setup: $it") }
+        rule.device.waitForIdle()
     }
 
     private val sdk = Build.VERSION.SDK_INT
 
     /** Opens setup fresh and walks to consent page [index] (0-based), saying "Not now" to the pages before it. */
     private fun openConsentPage(index: Int) {
+        // The parent's way in: setup isn't finished, so Home (Guardian) opens it, from the start.
+        // (Starting it directly with CLEAR_TASK cleared the home task, and API 36 then brought
+        // up the old launcher instead.)
+        closeSetup()
         OnboardingActivity.clearProgress(rule.context)
-        rule.context.startActivity(
-            Intent(rule.context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
-        )
-        assertWithMessage("setup opened on the role choice").that(rule.waitText("How will this phone be used?")).isTrue()
+        rule.device.pressHome()
+        assertWithMessage("setup opened on the role choice (Home opens ${rule.homeResolvesTo()})")
+            .that(rule.waitText("How will this phone be used?", 10_000)).isTrue()
         rule.tap("Make this phone simpler")
         assertThat(rule.waitText("Set up on my own for now")).isTrue()
         rule.tap("Set up on my own for now")
@@ -143,9 +152,10 @@ class ConsentDeviceTest {
      * the parent to tap) gives Guardian the role.
      */
     private fun acceptsRoleRequest(page: Int, role: String, capability: Capability, case: String) {
+        openConsentPage(page)
+        // Taken away once setup is open, since Home must open Guardian to get there.
         rule.shell("cmd role remove-role-holder $role ${rule.pkg}")
         assertWithMessage("$role taken away for the test").that(rule.waitUntil { !rule.container.capabilities.has(capability) }).isTrue()
-        openConsentPage(page)
 
         val intent = turnOn()
         assertThat(intent.action).isEqualTo(REQUEST_ROLE)
