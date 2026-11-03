@@ -95,14 +95,21 @@ class ConsentDeviceTest {
         // launcher came up; NEW_TASK from the test brought nothing up; Home with the home screen
         // already resumed only gave it a new intent; and a second setup started next to the one
         // the home screen starts left a window UiAutomator couldn't read.
+        // When setup is up but UiAutomator reads its window as empty ("Skipping null root node"
+        // for the same window on every try, PR #21's API 36 run on 96dc835), the accessibility
+        // cache is cleared before looking again.
         var opened = false
+        closeSetup()
         for (attempt in 1..3) {
-            closeSetup()
             OnboardingActivity.clearProgress(rule.context)
             rule.open(StubApp.NOTES)
             rule.waitForPackage(StubApp.NOTES.packageName)
             rule.device.pressHome()
-            opened = rule.waitText("How will this phone be used?", 10_000)
+            opened = rule.waitText("How will this phone be used?", 8_000)
+            if (!opened) {
+                rule.refreshAccessibility()
+                opened = rule.waitText("How will this phone be used?", 5_000)
+            }
             if (opened) break
             Log.w(TAG, "setup didn't show the role choice (try $attempt); top=${rule.topPackage()} " +
                 "resumed=${rule.resumedActivity()?.javaClass?.simpleName} screen=${rule.screenSummary().take(400)}")

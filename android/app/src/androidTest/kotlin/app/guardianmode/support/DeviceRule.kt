@@ -958,6 +958,19 @@ class DeviceRule(
         device.waitForIdle()
     }
 
+    /**
+     * Drops what UiAutomator's accessibility connection has cached, for a window it keeps
+     * reading as empty ("Skipping null root node" for one window id on every read). Android 14
+     * has UiAutomation.clearCache; before that, setting the service info again clears it too.
+     */
+    fun refreshAccessibility() {
+        runCatching {
+            val ua = instrumentation.uiAutomation
+            if (Build.VERSION.SDK_INT >= 34) ua.clearCache() else ua.serviceInfo = ua.serviceInfo
+        }.onFailure { Log.w(TAG, "couldn't clear the accessibility cache: $it") }
+        device.waitForIdle()
+    }
+
     fun topPackage(): String = device.currentPackageName ?: ""
 
     fun waitForPackage(packageName: String, timeoutMs: Long = TIMEOUT) = waitUntil(timeoutMs) { topPackage() == packageName }
