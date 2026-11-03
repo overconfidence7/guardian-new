@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
     private var destination by mutableStateOf(DEST_HOME)
     private var needsAttention by mutableStateOf(false)
     private var missing by mutableStateOf(emptyList<Capability>())
+    /** Pause cards can't arm without the call-screening role; the home screen says so (GM-PAUSE-009). */
+    private var screeningRoleHeld by mutableStateOf(true)
     /** Where to go back to, and what to do, once the lock code is entered. */
     private var unlockReturn = DEST_HOME
     private var afterUnlock: (() -> Unit)? = null
@@ -106,6 +108,7 @@ class MainActivity : ComponentActivity() {
     private fun refreshAttention() {
         needsAttention = container.protection.needsAttention()
         missing = container.protection.missingCapabilities()
+        screeningRoleHeld = container.capabilities.has(Capability.CALL_SCREENING)
     }
 
     private var askedFor: Capability? = null
@@ -217,7 +220,7 @@ class MainActivity : ComponentActivity() {
                     actions = transparencyActions,
                 )
                 else -> HomeScreen(
-                    ui = HomeModel.build(state, now, ::appLabel, needsAttention, requests),
+                    ui = HomeModel.build(state, now, ::appLabel, needsAttention, requests, screeningRoleHeld),
                     now = now,
                     actions = homeActions,
                 )

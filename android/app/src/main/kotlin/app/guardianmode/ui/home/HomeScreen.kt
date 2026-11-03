@@ -134,6 +134,10 @@ private fun Header(ui: HomeUi, actions: HomeActions, modifier: Modifier = Modifi
         }
         Spacer(Modifier.height(4.dp))
         Text(ui.greeting, style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.muted)
+        if (ui.note != null && !ui.paused) {
+            Spacer(Modifier.height(4.dp))
+            Text(ui.note, style = MaterialTheme.typography.bodyLarge, color = Guardian.colors.accent)
+        }
     }
 }
 

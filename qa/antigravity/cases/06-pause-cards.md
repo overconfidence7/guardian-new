@@ -47,23 +47,23 @@ For every card that appears: screenshot, record the delay from the app opening t
 
 ### GM-PAUSE-007 · A phone contact never arms  `P0`
 **Steps:** save `5550107777` as "Pat" in the phone's Contacts. Call from it, accept, hang up, open Chase.
-**Expect:** no card. Then revoke READ_CONTACTS and repeat: record the result (see suspect S-13; Android doesn't ask the screening app about contacts when Guardian can't read them, so it should still count as known).
+**Expect:** no card. Then revoke READ_CONTACTS and repeat: still no card (Android doesn't ask the screening app about contacts when Guardian can't read them, so an unscreened call counts as known).
 
 ### GM-PAUSE-008 · An allowlisted number never arms  `P1`
 **Setup:** family state (Pharmacy `+1 555 010 4444` is allowlisted).
 **Expect:** a call from `5550104444` doesn't arm.
 
 ### GM-PAUSE-009 · Screening role and contacts combinations  `P0`
-See suspect S-13. For each combination, do one Sarah call and one unknown call, then open Chase after each:
+Was suspect S-13 (fixed). `GuardianBrain` wires `CallTracker` so an unscreened call is read as a hidden number only when Guardian holds the screening role AND can read contacts; without the role Android never asks Guardian about a call, so no call counts as unknown. For each combination, do one Sarah call and one unknown call, then open Chase after each:
 
 | Screening role | Contacts | Unknown call should | Sarah call should |
 |---|---|---|---|
 | held | granted | arm | not arm |
 | held | denied | arm | not arm |
-| not held | granted | ? | ? |
-| not held | denied | ? | ? |
+| not held | granted | neither arms | neither arms |
+| not held | denied | neither arms | neither arms |
 
-**Expect:** the first two rows as shown. Record what actually happens in the last two and explain it in the report. A Sarah call arming the card in any row breaks spec bar 4 (P0). An unknown call never arming in a setup the parent can reach by tapping "Skip for now" is a P0 too, unless the transparency screen tells them pause cards won't work.
+**Expect:** as shown. A Sarah call arming the card in any row breaks spec bar 4 (P0). In the "not held" rows the home chip says "Check me" and, when pause cards were agreed to, the home screen says "Pause cards stay off until Guardian screens your calls." (see GM-SCRN-009); the transparency screen is one tap away. Record what the parent sees.
 
 ### GM-PAUSE-010 · Hidden numbers  `P1` `[PHONE]` `[HUMAN]`
 **Steps:** ask Nate to call the test phone with his number hidden (`*67` + number in the US), the phone answers, talks 40 s, hangs up, opens a real or stand-in bank app (with Nate's OK about installing a stand-in).

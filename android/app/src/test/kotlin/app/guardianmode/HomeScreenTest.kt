@@ -20,6 +20,7 @@ import app.guardianmode.core.HomeTile
 import app.guardianmode.core.Reminder
 import app.guardianmode.core.TileKind
 import app.guardianmode.data.LocalState
+import app.guardianmode.protection.Features
 import app.guardianmode.ui.home.AllAppsScreen
 import app.guardianmode.ui.home.AppEntry
 import app.guardianmode.ui.home.HomeActions
@@ -155,6 +156,31 @@ class HomeScreenTest {
         val paused = Fixtures.state.copy(pausedUntil = now.plusMinutes(5).toInstant().toEpochMilli())
         assertThat(HomeModel.build(paused, now).paused).isTrue()
         assertThat(HomeModel.build(paused, now.plusMinutes(6)).paused).isFalse()
+    }
+
+    /**
+     * GM-PAUSE-009 / GM-SCRN-009: without the call-screening role no call counts as unknown,
+     * so pause cards the parent agreed to can't arm. The home screen says so in one calm line
+     * next to "Check me"; it stays quiet when the role is held, when pause cards were never
+     * agreed to or are switched off, and while everything is paused.
+     */
+    @Test fun gm_pause_009_homeSaysPauseCardsWaitForScreening() {
+        val agreed = Fixtures.state.copy(consent = mapOf(Features.PAUSE to true, Features.CALLS to true))
+        val waiting = HomeModel.build(agreed, now, needsAttention = true, screeningRoleHeld = false)
+        assertThat(waiting.note).isEqualTo("Pause cards stay off until Guardian screens your calls.")
+        assertThat(HomeModel.build(agreed, now, screeningRoleHeld = true).note).isNull()
+        assertThat(HomeModel.build(Fixtures.state.copy(consent = mapOf(Features.PAUSE to false)), now, screeningRoleHeld = false).note).isNull()
+        val off = agreed.copy(config = agreed.config.copy(protection = agreed.config.protection.copy(pauseTripwires = agreed.config.protection.pauseTripwires.copy(enabled = false))))
+        assertThat(HomeModel.build(off, now, screeningRoleHeld = false).note).isNull()
+
+        var ui by androidx.compose.runtime.mutableStateOf(waiting)
+        rule.setContent { GuardianTheme { HomeScreen(ui, now, actions) } }
+        rule.onNodeWithText("Check me").assertExists()
+        rule.onNodeWithText("Pause cards stay off until Guardian screens your calls.").assertExists()
+        ui = waiting.copy(paused = true)
+        rule.onNodeWithText("Pause cards stay off until Guardian screens your calls.").assertDoesNotExist()
+        ui = waiting.copy(note = null)
+        rule.onNodeWithText("Pause cards stay off until Guardian screens your calls.").assertDoesNotExist()
     }
 
     @Test fun gm_home_007_nextReminderStripOnlyWithinTwoHours() {
