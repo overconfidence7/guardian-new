@@ -26,20 +26,25 @@ The six pages, in order (`ui/onboarding/ConsentPages.kt`):
 ### GM-CONS-003 · Home app role  `P0`
 **Steps:** on Android's home app chooser, pick Guardian Mode and confirm.
 **Expect:** back in setup, "Guardian is the home screen" is ticked. The instruction shown before was "Choose Guardian Mode, then tap "Set as default"." Check that matches what Android actually shows on each API level; if Android's wording is different (it often is), report the difference and the real wording per device.
+**In the cloud:** `ConsentDeviceTest.gm_cons_003_homeRoleOpensAndroidsDialogAndComesBackTicked` (API 29, 33, 36): with the home role taken away, page 1's Turn on starts Android's own role request for `android.app.role.HOME` (the permission controller), whose dialog names Guardian Mode and has a "Set as default" button, as the instruction says; tapping it brings the parent back to page 1 with the item ticked and "All set", and Home now opens Guardian. The dialog's real words per level are logged (`ConsentDeviceTest` tag).
 
 ### GM-CONS-004 · Phone calls permission  `P0`
 **Expect:** Android's "Allow Guardian Mode to make and manage phone calls?" dialog. After Allow, the checklist ticks it, all items done, "All set" and a "Next" button.
+**In the cloud:** `device_checks.py` `gm_cons_004_gm_cons_007_gm_cons_009_runtimeDialogsInSetup` (API 29 and 36), from a plain install with nothing granted but the roles and special access: page 1's Turn on shows Android's "make and manage phone calls" dialog once, a real tap on Allow grants it, and the page says "All set" with Next. What Android showed is in the report's measurements.
 
 ### GM-CONS-005 · Usage access deep link lands on Guardian's switch  `P0`
 **Steps:** page 2, Turn on, Continue.
 **Expect:** Settings opens on Usage access, ideally straight on Guardian's entry. Turn it on, press Back: you're back in setup with it ticked. Record per device whether it opened the list or Guardian's own switch, and how many taps it took. If Settings refuses ("restricted setting"), see GM-CONS-012.
+**In the cloud:** `ConsentDeviceTest.gm_cons_005_usageAccessDeepLinkOpensSettingsForGuardian` (API 29, 33, 36): page 2's Turn on starts `USAGE_ACCESS_SETTINGS` for `package:` Guardian, Settings comes to the front showing Guardian Mode, and after the switch is on (set with appops, since where it sits differs per level) Back lands on page 2 ticked with "All set". Which Settings screen opened (the list or Guardian's own) is logged per level.
 
 ### GM-CONS-006 · Display over other apps  `P0`
 **Expect:** Settings opens on Guardian's "Display over other apps" switch. After turning it on and pressing Back, it's ticked.
+**In the cloud:** `ConsentDeviceTest.gm_cons_006_displayOverOtherAppsOpensSettingsForGuardian` (API 29, 33, 36): `MANAGE_OVERLAY_PERMISSION` for `package:` Guardian opens Settings showing Guardian Mode; on API 29 that is Guardian's own "Allow display over other apps" switch. From Android 11 Android ignores the package and opens the list of apps, so the instruction now says "Tap Guardian Mode in the list, then turn on..." there. Back lands on page 2 ticked.
 
 ### GM-CONS-007 · Call screening role, phone state and contacts  `P0`
 **Steps:** page 3. Grant all three, one at a time.
 **Expect:** the screening role dialog says something like "Set Guardian Mode as your default caller ID & spam app?" (record the real wording). Then the phone-state and contacts dialogs. All three ticked.
+**In the cloud:** the role, in `ConsentDeviceTest.gm_cons_007_screeningRoleOpensAndroidsDialogAndComesBackTicked` (API 29, 33, 36): Android's role request for `android.app.role.CALL_SCREENING` names Guardian Mode and its "Set as default" gives Guardian the role, back on page 3 ticked; the dialog's words are logged. Phone state and contacts, in `device_checks.py` `gm_cons_004_gm_cons_007_gm_cons_009_runtimeDialogsInSetup` (API 29 and 36), with real taps on Allow: Android asks for contacts with its own dialog, and grants phone state without asking because page 1's Phone calls is in the same group; both end granted and the page says "All set".
 
 ### GM-CONS-008 · Daily check-in page has no Android prompt  `P1`
 **Expect:** page 4, "Turn on" goes straight to "All set" and Next. "Not now" moves on. No Android dialog either way.
@@ -47,6 +52,7 @@ The six pages, in order (`ui/onboarding/ConsentPages.kt`):
 ### GM-CONS-009 · Reminders: notifications, alarms, full screen  `P0`
 **Steps:** page 5. On API 33+ the notification dialog; on API 31+ the "Alarms & reminders" switch; on API 34+ the "Full-screen notifications" switch.
 **Expect:** each opens the right screen for Guardian, and comes back ticked. On API 29, notifications and alarms are ticked already and only what's needed is asked.
+**In the cloud:** `device_checks.py` `gm_cons_004_gm_cons_007_gm_cons_009_runtimeDialogsInSetup` (API 29 and 36): on API 29 Turn on goes straight to "All set" with no Android screen; on API 36 Android's notifications dialog (Allow tapped), then Guardian's own "Alarms & reminders" and full-screen notification pages in Settings, one at a time with Continue, each back to page 5 ticked. What Android showed is in the report's measurements.
 
 ### GM-CONS-010 · Battery page  `P1`
 **Expect:** Android's "Let app always run in background?" dialog. After Allow, ticked. On the real phone (likely Samsung or Motorola), note whether the OEM has its own extra battery screen Guardian doesn't mention (Samsung "Never sleeping apps", Motorola "Battery optimization"). Report what extra steps a parent would need.
