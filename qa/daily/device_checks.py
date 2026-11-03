@@ -5,10 +5,12 @@ emulator (reboots, reinstalls, killing the app, Doze) and the manifest audit, wh
 reads the built APK. Writes JUnit XML so qa/daily/report.py can fold the results in
 with every other suite.
 
-  python3 qa/daily/device_checks.py --apk app-debug.apk --stubs stub-apks/ --out results/
+  python3 qa/daily/device_checks.py --apk app-debug.apk --shrunk-apk app-benchmark.apk --out results/
 
 Runs against whatever emulator `adb` sees. Each check is independent: a failure is
-recorded and the next check starts from a fresh install of the app.
+recorded and the next check starts from a fresh install of the app. Every check installs
+the debug APK except the memory budget (GM-PERF-007), which measures the shrunk
+`benchmark` build (release's R8 and resource shrinking under debug's package name).
 """
 from __future__ import annotations
 
@@ -894,10 +896,12 @@ def stopped_from_active_apps(apk: str, **_) -> None:
                             f"notification={protection_notification()!r} stopped={app_stopped()})")
 
 
-def apk_size(apk: str, **_) -> None:
-    """GM-PERF-008: record the test APK's size; flag it past 150 MB."""
+def apk_size(apk: str, shrunk_apk: str | None = None, **_) -> None:
+    """GM-PERF-008: record the test APK's size; flag it past 150 MB. The shrunk build's size is recorded too."""
     mb = Path(apk).stat().st_size / 1_048_576
     measurements["Debug APK size"] = f"{mb:.1f} MB"
+    if shrunk_apk and Path(shrunk_apk).is_file():
+        measurements["Shrunk APK size"] = f"{Path(shrunk_apk).stat().st_size / 1_048_576:.1f} MB"
     check(mb < 150, f"debug APK is {mb:.1f} MB")
 
 
@@ -1047,16 +1051,24 @@ def doze_call(apk: str, **_) -> None:
     check(pause_card_after_open(), "no pause card after an unknown call taken in Doze")
 
 
-def memory(apk: str, **_) -> None:
-    """GM-PERF-007: PSS on the home screen under 150 MB."""
-    fresh_app(apk)
+def memory(apk: str, shrunk_apk: str | None = None, **_) -> None:
+    """GM-PERF-007: PSS on the home screen under 150 MB, measured on the shrunk build.
+
+    The debug APK carries every class of every library; a Play install is R8-shrunk, so the
+    budget is measured on the `benchmark` build type (release's shrinking, debug's package
+    name and key). Without --shrunk-apk the debug APK is measured and the measurement says so."""
+    if shrunk_apk is not None:
+        check(Path(shrunk_apk).is_file(), f"shrunk APK not found at {shrunk_apk} (android: ./gradlew assembleBenchmark)")
+    measured = shrunk_apk or apk
+    fresh_app(measured)
     time.sleep(5)
     out = sh(f"dumpsys meminfo {PKG}")
     m = re.search(r"TOTAL PSS:\s+(\d+)", out) or re.search(r"^\s*TOTAL\s+(\d+)", out, re.M)
     check(m is not None, "couldn't read PSS from dumpsys meminfo")
     mb = int(m.group(1)) / 1024
-    measurements["Home screen PSS"] = f"{mb:.0f} MB"
-    check(mb < 150, f"home screen PSS is {mb:.0f} MB (bar: 150 MB)")
+    build = "shrunk build" if shrunk_apk else "debug build"
+    measurements["Home screen PSS"] = f"{mb:.0f} MB ({build})"
+    check(mb < 150, f"home screen PSS is {mb:.0f} MB on the {build} (bar: 150 MB)")
 
 
 CHECKS = [
@@ -1081,7 +1093,8 @@ CHECKS = [
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apk", required=True)
+    ap.add_argument("--apk", required=True, help="the debug APK every check installs")
+    ap.add_argument("--shrunk-apk", help="the benchmark APK (R8-shrunk) the memory budget GM-PERF-007 measures")
     ap.add_argument("--out", required=True)
     ap.add_argument("--suite", default="device-host")
     ap.add_argument("--no-device", action="store_true", help="only the checks that read the APK")
@@ -1124,7 +1137,7 @@ def main() -> int:
             continue
         start = time.time()
         try:
-            fn(apk=args.apk)
+            fn(apk=args.apk, shrunk_apk=args.shrunk_apk)
             print(f"PASS {name}")
         except CheckSkipped as e:
             ET.SubElement(case, "skipped", message=str(e))

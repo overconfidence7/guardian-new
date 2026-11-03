@@ -61,6 +61,20 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // The build the memory budget is measured on (GM-PERF-007, qa/daily/device_checks.py):
+        // release's R8 tree shaking and resource shrinking, so the number is the one a Play
+        // install would show, with debug's package name, signing key and emulator settings so
+        // the host checks can install it, grant to it and run-as it like the debug APK.
+        // Debuggable because run-as needs it; R8 then skips its code optimizations but still
+        // shrinks. Only `assembleBenchmark` builds it; nothing else uses it.
+        create("benchmark") {
+            initWith(getByName("release"))
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("Boolean", "USE_EMULATORS", "${setting("GUARDIAN_USE_EMULATORS", "true")}")
+            matchingFallbacks += listOf("release", "debug")
+        }
     }
 
     buildFeatures {
