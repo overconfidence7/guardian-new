@@ -848,6 +848,16 @@ def tap_text_scrolling(text: str, swipes: int = 4) -> bool:
     return False
 
 
+def tap_until(text: str, then: str, tries: int = 3) -> bool:
+    """Taps [text] until [then] shows."""
+    for _ in range(tries):
+        time.sleep(1)
+        tap_text_scrolling(text, swipes=2)
+        if wait_text(then, 8):
+            return True
+    return False
+
+
 def answer_android_screens(page: str, ops: list[str]) -> list[str]:
     """Taps "Turn on" on consent page [page], then answers Android as a parent saying yes would,
     until Guardian says "All set": Allow on a permission dialog; on a Settings page the switch
@@ -911,9 +921,10 @@ def consent_android_screens(apk: str, **_) -> None:
     wake()
     open_app(PKG)
     check(wait_text("How will this phone be used?", 20), f"Guardian didn't open on the role choice ({top_activity()})")
-    check(tap_text_scrolling("Make this phone simpler"), f"no \"Make this phone simpler\": {screen_words(PKG)}")
-    check(wait_text("Make your phone easier to use.", 10), f"Welcome didn't follow: {screen_words(PKG)}")
-    check(tap_text_scrolling("Set up on my own for now"), f"no \"Set up on my own for now\": {screen_words(PKG)}")
+    # A tap right after a cold start can be lost (on 11-03's API 29 run the role choice stayed
+    # after one), so each step is tapped again until the next screen shows.
+    check(tap_until("Make this phone simpler", "Make your phone easier to use."), f"Welcome didn't follow: {screen_words(PKG)}")
+    check(tap_until("Set up on my own for now", "A simpler home screen"), f"page 1 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-004: page 1 asks only for Phone calls (the home role is held).
     shown = answer_android_screens("A simpler home screen", [])
@@ -922,9 +933,8 @@ def consent_android_screens(apk: str, **_) -> None:
           f"page 1 should show Android's \"make and manage phone calls\" dialog once; it showed {shown}")
     _, granted = requested_and_granted()
     check("android.permission.CALL_PHONE" in granted, "Phone calls not granted after Allow")
-    check(tap_text_scrolling("Next"), f"no Next after \"All set\": {screen_words(PKG)}")
-    check(wait_text("Pause before sending money", 10), f"page 2 didn't follow: {screen_words(PKG)}")
-    tap_text_scrolling("Not now")
+    check(tap_until("Next", "Pause before sending money"), f"page 2 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Quiet unknown callers"), f"page 3 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-007: phone state and contacts (the screening role is held). Phone state is in the
     # same group as Phone calls, which page 1 got, so Android may grant it without asking.
@@ -935,9 +945,8 @@ def consent_android_screens(apk: str, **_) -> None:
           f"phone state and contacts not both granted after Allow; Android showed {shown}")
     check(any(s.startswith("dialog:") and "contacts" in s.lower() for s in shown), f"no Contacts dialog on page 3; Android showed {shown}")
     check(all(s.startswith("dialog:") for s in shown), f"page 3 opened something besides permission dialogs: {shown}")
-    check(tap_text_scrolling("Next"), f"no Next after \"All set\": {screen_words(PKG)}")
-    check(wait_text('A daily "I\'m OK"', 10), f"page 4 didn't follow: {screen_words(PKG)}")
-    tap_text_scrolling("Not now")
+    check(tap_until("Next", 'A daily "I\'m OK"'), f"page 4 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Reminders"), f"page 5 didn't follow: {screen_words(PKG)}")
 
     # GM-CONS-009: notifications (API 33+), alarms (31+), full screen (34+), each on its own screen.
     ops = list(reminder_ops)
