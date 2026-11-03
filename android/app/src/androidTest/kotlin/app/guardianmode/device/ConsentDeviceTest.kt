@@ -15,6 +15,7 @@ import androidx.test.uiautomator.Direction
 import app.guardianmode.protection.Capability
 import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceRule
+import app.guardianmode.support.StubApp
 import app.guardianmode.ui.onboarding.ConsentPages
 import app.guardianmode.ui.onboarding.OnboardingActivity
 import com.google.common.truth.Truth.assertThat
@@ -88,27 +89,23 @@ class ConsentDeviceTest {
 
     /** Opens setup fresh and walks to consent page [index] (0-based), saying "Not now" to the pages before it. */
     private fun openConsentPage(index: Int) {
-        // Setup is opened by Guardian's home screen itself, as MainActivity does while setup isn't
-        // done. Not by pressing Home: when the home screen was already resumed, Home only brought
-        // it a new intent and it never re-read that setup isn't done. Not from the test's context
-        // either: with NEW_TASK nothing came up over the home screen (both on PR #21's API 36
-        // runs), and with CLEAR_TASK the home task was cleared and the old launcher came up.
-        closeSetup()
-        OnboardingActivity.clearProgress(rule.context)
+        // The parent's way in: from another app, Home. Guardian's home screen comes back and,
+        // since setup isn't done, sends the parent to setup. Starting setup any other way didn't
+        // hold up on the CI emulators (PR #21): CLEAR_TASK cleared the home task and the old
+        // launcher came up; NEW_TASK from the test brought nothing up; Home with the home screen
+        // already resumed only gave it a new intent; and a second setup started next to the one
+        // the home screen starts left a window UiAutomator couldn't read.
         var opened = false
         for (attempt in 1..3) {
+            closeSetup()
+            OnboardingActivity.clearProgress(rule.context)
+            rule.open(StubApp.NOTES)
+            rule.waitForPackage(StubApp.NOTES.packageName)
             rule.device.pressHome()
-            rule.device.waitForIdle()
-            val home = rule.resumedActivity()
-            if (home != null) {
-                rule.withLimit(10_000) { rule.instrumentation.runOnMainSync { home.startActivity(Intent(home, OnboardingActivity::class.java)) } }
-            } else {
-                rule.context.startActivity(Intent(rule.context, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            opened = rule.waitText("How will this phone be used?", 8_000)
+            opened = rule.waitText("How will this phone be used?", 10_000)
             if (opened) break
-            Log.w(TAG, "setup didn't show the role choice (try $attempt, started from ${home?.javaClass?.simpleName}); " +
-                "top=${rule.topPackage()} resumed=${rule.resumedActivity()?.javaClass?.simpleName} screen=${rule.screenSummary().take(400)}")
+            Log.w(TAG, "setup didn't show the role choice (try $attempt); top=${rule.topPackage()} " +
+                "resumed=${rule.resumedActivity()?.javaClass?.simpleName} screen=${rule.screenSummary().take(400)}")
         }
         assertWithMessage("setup opened on the role choice (top=${rule.topPackage()}, resumed=${rule.resumedActivity()?.javaClass?.simpleName})").that(opened).isTrue()
         rule.tap("Make this phone simpler")
