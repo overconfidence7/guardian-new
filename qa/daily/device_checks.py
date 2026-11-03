@@ -819,6 +819,179 @@ def home_before_setup(apk: str, **_) -> None:
     sh("input keyevent KEYCODE_HOME")
 
 
+def ui_nodes() -> list[dict[str, str]]:
+    """Every node of a UI dump, with its text (or description), resource id, package and center."""
+    nodes = []
+    for m in re.finditer(r"<node [^>]*>", ui_dump()):
+        def attr(name: str, node: str = m.group(0)) -> str:
+            a = re.search(rf'\b{name}="([^"]*)"', node)
+            return (a.group(1) if a else "").replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&")
+        b = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", attr("bounds"))
+        x1, y1, x2, y2 = map(int, b.groups()) if b else (0, 0, 0, 0)
+        nodes.append({"text": attr("text") or attr("content-desc"), "res": attr("resource-id"), "pkg": attr("package"),
+                      "x": str((x1 + x2) // 2), "y": str((y1 + y2) // 2)})
+    return nodes
+
+
+def screen_words(package_part: str) -> str:
+    """What the window of the package whose name contains [package_part] says, for measurements and messages."""
+    return " | ".join(dict.fromkeys(n["text"] for n in ui_nodes() if package_part in n["pkg"] and n["text"]))[:600]
+
+
+def tap_text_scrolling(text: str, swipes: int = 4) -> bool:
+    """Taps [text] on Guardian's page, swiping the page up when it is below the fold."""
+    for _ in range(swipes + 1):
+        if tap_text(text):
+            return True
+        sh("input swipe 540 1700 540 700 300")
+        time.sleep(1)
+    return False
+
+
+CONSENT_TITLES = ["A simpler home screen", "Pause before sending money", "Quiet unknown callers",
+                  'A daily "I\'m OK"', "Reminders", "Keep Guardian awake"]
+
+
+def page_marks(page: str) -> list[str]:
+    """What tells a screen apart: for a consent page ("Step N of 6") its step line or its
+    title, since a UI dump doesn't always carry both (API 36 dropped page 4's title on 11-03)."""
+    m = re.fullmatch(r"Step (\d) of 6", page)
+    return [page, CONSENT_TITLES[int(m.group(1)) - 1]] if m else [page]
+
+
+def showing(page: str) -> bool:
+    texts = {n["text"] for n in ui_nodes()}
+    return any(t in texts for t in page_marks(page))
+
+
+def tap_until(text: str, then: str, before: str | None = None, tries: int = 3) -> bool:
+    """Taps [text] until [then] shows. A tap is repeated only while the screen it was meant
+    for ([before]) still shows: a dump that misses [then] must not send a second tap to the
+    next page (on 11-03's API 29 run one "Not now" became three and setup skipped to page 5)."""
+    for i in range(tries):
+        time.sleep(1)
+        if i == 0 or before is None or showing(before):
+            tap_text_scrolling(text, swipes=2)
+        if wait_for(lambda: showing(then), 10, interval=0.5) is not None:
+            return True
+    return False
+
+
+def answer_android_screens(page: str, ops: list[str]) -> list[str]:
+    """Taps "Turn on" on the consent page whose "Step N of 6" is [page] (UI dumps on API 36
+    don't always carry the page title: page 4's was missing on 11-03), then answers Android as a parent saying yes would,
+    until Guardian says "All set": Allow on a permission dialog; on a Settings page the switch
+    (granted with appops from [ops], in order, since where the switch sits differs per level)
+    and Back; Continue on Guardian's checklist for the next item. Returns what Android showed,
+    in order: "dialog: <its words>" or "settings: <activity>"."""
+    check(wait_for(lambda: showing(page), 15, interval=0.5) is not None, f"setup didn't reach \"{page}\" ({top_activity()}): {screen_words(PKG)}")
+    check(tap_text_scrolling("Turn on"), f"no \"Turn on\" on \"{page}\": {screen_words(PKG)}")
+    shown: list[str] = []
+    unanswered: list[str] = []
+    for _ in range(12):
+        time.sleep(2)
+        top = top_activity()
+        if "permissioncontroller" in top:
+            nodes = ui_nodes()
+            allow = next((n for n in nodes if n["res"].endswith(":id/permission_allow_button")), None)
+            if allow is None:
+                # Android grants a permission whose group already has one without showing
+                # anything, but its activity is briefly on top while it does.
+                unanswered.append(f"{top.split('/')[-1]}: {screen_words('permissioncontroller')[:200]}")
+                continue
+            shown.append("dialog: " + " | ".join(dict.fromkeys(n["text"] for n in nodes if "permissioncontroller" in n["pkg"] and n["text"]))[:600])
+            sh(f"input tap {allow['x']} {allow['y']}")
+        elif top.startswith("com.android.settings/"):
+            shown.append(f"settings: {top.split('/')[-1]} ({screen_words('com.android.settings')[:400]})")
+            check(bool(ops), f"Settings opened ({top}) with nothing left to turn on; Android showed {shown}")
+            sh(f"appops set {PKG} {ops.pop(0)} allow")
+            sh("input keyevent KEYCODE_BACK")
+        elif top.startswith(PKG + "/"):
+            if find_text("All set"):
+                return shown
+            if not tap_text("Continue"):
+                sh("input swipe 540 1700 540 700 300")  # below the fold
+        else:
+            shown.append(f"other: {top}")
+    check(False, f"\"{page}\" never said \"All set\" ({top_activity()}); Android showed {shown}; "
+                 f"dialogs with no Allow: {unanswered[-3:]}; Guardian shows: {screen_words(PKG)}")
+    return shown
+
+
+def consent_android_screens(apk: str, **_) -> None:
+    """GM-CONS-004, GM-CONS-007 and GM-CONS-009: setup's runtime permission dialogs, walked
+    from a plain install (nothing granted) with real taps on Android's Allow. Roles and
+    special access are left granted here: ConsentDeviceTest covers those screens on all three
+    levels, from inside the app, where runtime permissions can't be taken away (that kills
+    the process the tests run in). Exact alarms and full-screen notifications are taken away
+    here for the same reason. What Android showed on each page goes to the measurements."""
+    level = sdk()
+    sh(f"pm uninstall {PKG}")
+    adb("install", "-r", apk, timeout=300)  # no -g: every runtime permission still to be asked
+    for c in [
+        f"cmd role add-role-holder android.app.role.HOME {PKG}",
+        f"cmd role add-role-holder android.app.role.CALL_SCREENING {PKG}",
+        f"appops set {PKG} GET_USAGE_STATS allow",
+        f"appops set {PKG} SYSTEM_ALERT_WINDOW allow",
+    ]:
+        sh(c)
+    reminder_ops = (["SCHEDULE_EXACT_ALARM"] if level >= 31 else []) + (["USE_FULL_SCREEN_INTENT"] if level >= 34 else [])
+    for op in reminder_ops:
+        sh(f"appops set {PKG} {op} deny")
+    wake()
+    open_app(PKG)
+    check(wait_text("How will this phone be used?", 20), f"Guardian didn't open on the role choice ({top_activity()})")
+    # A tap right after a cold start can be lost (on 11-03's API 29 run the role choice stayed
+    # after one), so each step is tapped again until the next screen shows.
+    check(tap_until("Make this phone simpler", "Make your phone easier to use.", "How will this phone be used?"), f"Welcome didn't follow: {screen_words(PKG)}")
+    check(tap_until("Set up on my own for now", "Step 1 of 6", "Make your phone easier to use."), f"page 1 didn't follow: {screen_words(PKG)}")
+
+    # GM-CONS-004: page 1 asks only for Phone calls (the home role is held).
+    shown = answer_android_screens("Step 1 of 6", [])
+    measurements["Setup page 1: what Android showed"] = " / ".join(shown) or "nothing"
+    check(len(shown) == 1 and shown[0].startswith("dialog:") and "phone calls" in shown[0].lower(),
+          f"page 1 should show Android's \"make and manage phone calls\" dialog once; it showed {shown}")
+    _, granted = requested_and_granted()
+    check("android.permission.CALL_PHONE" in granted, "Phone calls not granted after Allow")
+    check(tap_until("Next", "Step 2 of 6", "Step 1 of 6"), f"page 2 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Step 3 of 6", "Step 2 of 6"), f"page 3 didn't follow: {screen_words(PKG)}")
+
+    # GM-CONS-007: phone state and contacts (the screening role is held). Phone state is in the
+    # same group as Phone calls, which page 1 got, so Android may grant it without asking.
+    shown = answer_android_screens("Step 3 of 6", [])
+    measurements["Setup page 3: what Android showed"] = " / ".join(shown) or "nothing"
+    _, granted = requested_and_granted()
+    check({"android.permission.READ_PHONE_STATE", "android.permission.READ_CONTACTS"} <= granted,
+          f"phone state and contacts not both granted after Allow; Android showed {shown}")
+    check(any(s.startswith("dialog:") and "contacts" in s.lower() for s in shown), f"no Contacts dialog on page 3; Android showed {shown}")
+    check(all(s.startswith("dialog:") for s in shown), f"page 3 opened something besides permission dialogs: {shown}")
+    check(tap_until("Next", "Step 4 of 6", "Step 3 of 6"), f"page 4 didn't follow: {screen_words(PKG)}")
+    check(tap_until("Not now", "Step 5 of 6", "Step 4 of 6"), f"page 5 didn't follow: {screen_words(PKG)}")
+
+    # GM-CONS-009: notifications (API 33+), alarms (31+), full screen (34+), each on its own screen.
+    ops = list(reminder_ops)
+    # On the 11-03 API 36 run notifications were already allowed by page 5 (nothing in setup
+    # had asked), so whether Android must ask is read first.
+    _, granted = requested_and_granted()
+    notifications_before = "android.permission.POST_NOTIFICATIONS" in granted
+    measurements["Setup page 5: notifications already allowed"] = str(notifications_before)
+    shown = answer_android_screens("Step 5 of 6", ops)
+    measurements["Setup page 5: what Android showed"] = " / ".join(shown) or "nothing"
+    dialogs = [s for s in shown if s.startswith("dialog:")]
+    settings = [s for s in shown if s.startswith("settings:")]
+    if level >= 33 and not notifications_before:
+        check(len(dialogs) == 1 and "notifications" in dialogs[0].lower(), f"expected one notifications dialog on API {level}; Android showed {shown}")
+        _, granted = requested_and_granted()
+        check("android.permission.POST_NOTIFICATIONS" in granted, "notifications not granted after Allow")
+    else:
+        check(not dialogs, f"API {level} needs no notifications dialog (allowed before: {notifications_before}); Android showed {shown}")
+    check(len(settings) == len(reminder_ops) and not ops,
+          f"expected a Settings screen for each of {reminder_ops} on API {level}; Android showed {shown}")
+    check(all("Guardian Mode" in s for s in settings), f"a Settings screen wasn't Guardian's own: {settings}")
+    check(len(shown) == len(dialogs) + len(settings), f"page 5 opened something unexpected: {shown}")
+    sh("input keyevent KEYCODE_HOME")
+
+
 def reinstall_starts_fresh(apk: str, **_) -> None:
     """GM-ROB-011: after uninstalling and installing again, setup starts fresh and nothing
     from before survives: no saved state or pictures, no protection running, not the home app."""
@@ -1064,6 +1237,7 @@ CHECKS = [
     ("gm_perf_008_apkSize", apk_size, False),
     ("gm_inst_001_installsAndOpensOnTheRoleChoice", installs_and_opens, True),
     ("gm_inst_011_homeBeforeSetupIsTheOldLauncher", home_before_setup, True),
+    ("gm_cons_004_gm_cons_007_gm_cons_009_runtimeDialogsInSetup", consent_android_screens, True),
     ("gm_rob_011_reinstallStartsFresh", reinstall_starts_fresh, True),
     ("gm_svc_001_serviceRunsAfterSetup", service_starts, True),
     ("gm_priv_023_noBannedCapabilitiesInPractice", no_banned_capabilities, True),

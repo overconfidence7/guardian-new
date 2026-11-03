@@ -745,14 +745,14 @@ class DeviceRule(
         waitFor(selector, 3_000)
         hideKeyboard()
         check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
-        var matches = device.findObjects(selector)
+        var matches = findAll(selector)
         // A node Compose has just replaced reads as not clickable (insideClickable can't walk
         // it), which would send the scroll below away from a target already in view. Find
         // stale matches again before deciding anything from them.
         repeat(3) {
             if (matches.none { isStale(it) }) return@repeat
             device.waitForIdle(500)
-            matches = device.findObjects(selector)
+            matches = findAll(selector)
         }
         // Only a heading with the same words in view on one of Guardian's pages: the button
         // is further down. (Never scrolled outside Guardian: in the shade a scroll closes it.)
@@ -763,12 +763,12 @@ class DeviceRule(
         var downs = 0
         while (downs < 3 && matches.isNotEmpty() && matches.none { insideClickable(it) } && scrollOnce(Direction.DOWN)) {
             downs++
-            matches = device.findObjects(selector)
+            matches = findAll(selector)
         }
         if (downs > 0 && matches.none { insideClickable(it) }) {
             repeat(downs) { scrollOnce(Direction.UP) }
-            matches = device.findObjects(selector)
-            if (matches.isEmpty() && seen(selector, 500)) matches = device.findObjects(selector)
+            matches = findAll(selector)
+            if (matches.isEmpty() && seen(selector, 500)) matches = findAll(selector)
         }
         val target = matches.firstOrNull { insideClickable(it) } ?: matches.firstOrNull()
             ?: run { dumpUi("gone: $selector"); error("Nothing on screen matches $selector") }
@@ -782,19 +782,44 @@ class DeviceRule(
             val center = try {
                 current.visibleCenter
             } catch (e: androidx.test.uiautomator.StaleObjectException) {
-                if (attempt == 4) throw e
-                Log.w(TAG, "tap target went stale, finding it again: $selector")
-                device.waitForIdle(500)
-                // Gone from view (the page moved while it redrew, as in gm_scrn_006 on PR #12's
-                // API 36 run, where the switch ended up scrolled off): scroll it back first.
-                val again = device.findObjects(selector).ifEmpty { if (seen(selector, 1_000)) device.findObjects(selector) else emptyList() }
-                current = again.firstOrNull { insideClickable(it) } ?: again.firstOrNull() ?: throw e
+                Log.w(TAG, "tap target went stale (try ${attempt + 1}), finding it again: $selector")
+                current = findAgain(selector) ?: run {
+                    dumpUi("gone after a redraw: $selector")
+                    error("$selector went away while it was being tapped: the page redrew and it didn't come back within " +
+                        "${REFIND_MS / 1000} s (top=${topPackage()}; on screen: ${screenSummary().take(800)})")
+                }
                 return@repeat
             }
             device.click(center.x, center.y)
             device.waitForIdle()
             return
         }
+        dumpUi("stale every time: $selector")
+        error("$selector went stale on each of 5 tries to tap it (top=${topPackage()}; on screen: ${screenSummary().take(800)})")
+    }
+
+    /** Every match for [selector] right now; none when UiAutomator can't read the window. */
+    private fun findAll(selector: BySelector): List<UiObject2> =
+        runCatching { device.findObjects(selector) }.getOrDefault(emptyList())
+
+    /**
+     * [selector] again after its node went stale. Compose can replace the node between finding
+     * and tapping it (gm_scrn_006 and gm_tran_004 on API 33), and a redraw can leave UiAutomator
+     * with no readable window for a moment ("Skipping null root node", "Active window root not
+     * found": gm_scam_005 on the API 33 main run of 2026-11-03, where one miss ended the test
+     * with a bare StaleObjectException). So this waits for the screen to settle and keeps
+     * looking, scrolling it back into view if the page moved, for up to [REFIND_MS].
+     */
+    private fun findAgain(selector: BySelector): UiObject2? {
+        val end = System.currentTimeMillis() + REFIND_MS
+        while (System.currentTimeMillis() < end) {
+            device.waitForIdle(500)
+            val again = findAll(selector).ifEmpty { if (seen(selector, 1_000)) findAll(selector) else emptyList() }
+                .filterNot { isStale(it) }
+            (again.firstOrNull { insideClickable(it) } ?: again.firstOrNull())?.let { return it }
+            Thread.sleep(250)
+        }
+        return null
     }
 
     fun tap(text: String) = tapOn(By.text(text))
@@ -930,6 +955,19 @@ class DeviceRule(
         if (has(By.desc("Lock code"))) waitUntil(1_500) { keyboardShown() }
         hideKeyboard()
         device.pressBack()
+        device.waitForIdle()
+    }
+
+    /**
+     * Drops what UiAutomator's accessibility connection has cached, for a window it keeps
+     * reading as empty ("Skipping null root node" for one window id on every read). Android 14
+     * has UiAutomation.clearCache; before that, setting the service info again clears it too.
+     */
+    fun refreshAccessibility() {
+        runCatching {
+            val ua = instrumentation.uiAutomation
+            if (Build.VERSION.SDK_INT >= 34) ua.clearCache() else ua.serviceInfo = ua.serviceInfo
+        }.onFailure { Log.w(TAG, "couldn't clear the accessibility cache: $it") }
         device.waitForIdle()
     }
 
@@ -1183,6 +1221,8 @@ class DeviceRule(
         const val QUIET = 5_000L
         /** Time for a phone-state broadcast to reach the brain after the registry changes. */
         const val SETTLE = 1_000L
+        /** How long a tap keeps looking for a target whose node went stale (see findAgain). */
+        const val REFIND_MS = 6_000L
         /** Android's own apps tests open (Settings screens, the uninstall confirmation); see closeLeftoverApps. */
         val LEFTOVER_SYSTEM_APPS = listOf("com.android.settings", "com.android.packageinstaller", "com.google.android.packageinstaller")
         /** System log tags that say how an activity switch went (see [systemLog]). */
