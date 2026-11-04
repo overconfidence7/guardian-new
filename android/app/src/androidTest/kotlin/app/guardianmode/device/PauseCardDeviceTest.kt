@@ -342,12 +342,14 @@ class PauseCardDeviceTest {
     }
 
     @Test fun gm_pause_040_gm_perf_003_cardWithinTwoSecondsEveryTime() {
-        val times = mutableListOf<Long>()
+        val times = mutableListOf<Long?>()
+        val readable = mutableListOf<Long>()
         repeat(RUNS) { i ->
             shortUnknownCall(if (i % 2 == 0) UNKNOWN else UNKNOWN_2)
-            val t = openAndTimeCard(StubApp.CHASE, timeoutMs = 10_000)
-            assertWithMessage("run ${i + 1}: card appeared").that(t).isNotNull()
-            times += t!!
+            val (cover, read) = openAndTimeCover(StubApp.CHASE)
+            assertWithMessage("run ${i + 1}: card readable within $READABLE_CI_BAR_MS ms").that(read).isNotNull()
+            times += cover
+            readable += read!!
             continueAnyway()
             rule.goHome()
         }
@@ -356,18 +358,41 @@ class PauseCardDeviceTest {
         rule.sleepScreen()
         Thread.sleep(3_000)
         rule.wake()
-        val afterWake = openAndTimeCard(StubApp.CHASE, timeoutMs = 10_000)
-        assertWithMessage("card after screen on").that(afterWake).isNotNull()
+        val (afterWake, afterWakeRead) = openAndTimeCover(StubApp.CHASE)
+        assertWithMessage("card after screen on: readable within $READABLE_CI_BAR_MS ms").that(afterWakeRead).isNotNull()
 
-        val sorted = times.sorted()
-        Log.i(TAG, "GM-PAUSE-040 pause card ms: min=${sorted.first()} median=${sorted[sorted.size / 2]} max=${sorted.last()} all=$times; after screen-on=$afterWake")
+        // The case times how long Chase is usable: from Chase coming to the front to the card
+        // covering it. Usage access timestamps both, so this is the app's own latency. The time
+        // until UiAutomator can read the card also counts Chase's own start-up and UiAutomator's
+        // read delay ("Active window root not found" on API 33 and 36 on 11-03 and 11-04), so it
+        // only gets the loose bar above, for a card that never really came.
+        val known = times.filterNotNull().sorted()
+        Log.i(TAG, "GM-PAUSE-040 pause card ms (Chase to card): min=${known.firstOrNull()} median=${known.getOrNull(known.size / 2)} max=${known.lastOrNull()} " +
+            "all=$times; after screen-on=$afterWake; readable after open: $readable, after screen-on $afterWakeRead")
+        assertWithMessage("Chase and the card both seen resuming in every run (ms, Chase to card): $times").that(times.count { it == null }).isEqualTo(0)
+        assertWithMessage("Chase and the card both seen resuming after screen-on").that(afterWake).isNotNull()
         // The bar is 2 s every time on a phone. A CI emulator shares its CPU and now and then
         // stalls for a second or more, so here 9 runs of 10 must make the 2 s bar and none may
         // take more than twice that; the log line carries every number for the report.
-        val overBar = times.count { it > CARD_BAR_MS }
-        assertWithMessage("runs over $CARD_BAR_MS ms (of $RUNS): $times").that(overBar).isAtMost(1)
-        times.forEachIndexed { i, t -> assertWithMessage("run ${i + 1} latency (ms)").that(t).isAtMost(2 * CARD_BAR_MS) }
-        assertWithMessage("latency after screen-on (ms)").that(afterWake).isAtMost(2 * CARD_BAR_MS)
+        val overBar = known.count { it > CARD_BAR_MS }
+        assertWithMessage("runs over $CARD_BAR_MS ms, Chase to card (of $RUNS): $times").that(overBar).isAtMost(1)
+        times.forEachIndexed { i, t -> assertWithMessage("run ${i + 1} latency, Chase to card (ms)").that(t).isAtMost(2 * CARD_BAR_MS) }
+        assertWithMessage("latency after screen-on, Chase to card (ms)").that(afterWake).isAtMost(2 * CARD_BAR_MS)
+    }
+
+    /**
+     * Opens [app] and returns how long it was usable, from its resume to the card's (Usage
+     * access timestamps, null if either wasn't seen), and how long after the start command
+     * UiAutomator could read the card (null if not within [READABLE_CI_BAR_MS]).
+     */
+    private fun openAndTimeCover(app: StubApp): Pair<Long?, Long?> {
+        val readable = openAndTimeCard(app, timeoutMs = READABLE_CI_BAR_MS)
+        val resumes = rule.resumesSince(rule.lastOpenAt - 500)
+        val appAt = resumes.firstOrNull { it.first == app.packageName }?.third
+        val cardAt = appAt?.let { a -> resumes.firstOrNull { it.first == rule.pkg && it.second.endsWith("GuardianCardActivity") && it.third >= a }?.third }
+        val cover = if (appAt != null && cardAt != null) cardAt - appAt else null
+        Log.i(TAG, "${app.label}: card covered it after ${cover ?: "?"} ms; resumes=${resumes.map { "${it.first.substringAfterLast('.')}/${it.second.substringAfterLast('.')}@+${it.third - rule.lastOpenAt}" }}")
+        return cover to readable
     }
 
     @Test fun gm_pause_041_withoutOverlayHomeAppStillShowsCard() {
@@ -407,5 +432,6 @@ class PauseCardDeviceTest {
     private companion object {
         const val TAG = "PauseCardDeviceTest"
         const val RUNS = 10
+        const val READABLE_CI_BAR_MS = 10_000L
     }
 }
