@@ -45,6 +45,8 @@ adb logcat -c >/dev/null 2>&1 || true
 # doesn't keep a whole run's worth). ScamScenario carries each scenario's steps.
 adb logcat -v time -s TestRunner:I GuardianTrace:I GuardianDiag:I UiDump:I DeviceRule:W ScamScenario:I > "$OUT/logcat-diag.txt" 2>/dev/null &
 diag_pid=$!
+adb logcat -v time -b main,system,crash -s "${SYSTEM_TAGS[@]}" > "$OUT/logcat-system.txt" 2>/dev/null &
+system_pid=$!
 
 cd "$ROOT/android"
 args=(connectedDebugAndroidTest --no-daemon --continue)
@@ -70,6 +72,12 @@ POLL=${POLL:-30}
 last_events() { grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null | tail -2 | tr '\n' ' ' | cut -c1-600; }
 last_lines() { tail -n 4 "$OUT/logcat-diag.txt" 2>/dev/null | cut -c1-300 | tr '\n' ' '; }
 answers() { timeout 20 adb shell true >/dev/null 2>&1; }
+# The emulator answers and so does Android's package service: on 11-04 (API 29, twice) the
+# package service died during a stand-in's `pm install` while `adb shell true` still worked.
+healthy() { timeout 30 adb shell pm path android 2>/dev/null | grep -q '^package:'; }
+# system_server's own crash and watchdog lines, kept apart from the test tags, so a lost
+# emulator says what Android itself saw (its full log can't be dumped once it stops answering).
+SYSTEM_TAGS=(AndroidRuntime:E Watchdog:W PackageManager:E ActivityManager:E libc:F DEBUG:F)
 
 # Runs connectedDebugAndroidTest with "$@" added to args, under the watchdog above. Sets rc
 # (124 when the watchdog stopped it) and stopped (why, or empty). Gradle's output also goes to
@@ -141,7 +149,7 @@ suite_start=$(date +%s)
 run_suite instrumented "$SUITE_LIMIT"
 [ $rc -eq 0 ] || status=1
 timeout 120 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
-kill "$diag_pid" 2>/dev/null || true
+kill "$diag_pid" "$system_pid" 2>/dev/null || true
 mkdir -p "$OUT/instrumented"
 cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented/" 2>/dev/null || true
 
@@ -152,9 +160,10 @@ cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented/" 2>/
 # answer, and the tests that never started run once, in a second pass.
 cut_in="$(interrupted_test)"
 if [ -z "$stopped" ] && [ -n "$cut_in" ]; then
-  if answers; then answered="it still answers adb"; else answered="it no longer answers adb"; fi
+  if healthy; then answered="Android still answers"; elif answers; then answered="adb answers but Android's package service doesn't"; else answered="it no longer answers adb"; fi
   saw="$(grep -E 'Broken pipe|device offline|not found|Failed to|Instrumentation run failed|Process crashed' "$OUT/gradle-instrumented.txt" 2>/dev/null | head -3 | cut -c1-200 | tr '\n' ' ')"
-  why="the instrumented run ended during ${cut_in#*.device.} and ${answered}; Gradle said: ${saw:-nothing about it}"
+  system="$(grep -vE '^-+ beginning of' "$OUT/logcat-system.txt" 2>/dev/null | tail -6 | cut -c1-250 | tr '\n' ' ')"
+  why="the instrumented run ended during ${cut_in#*.device.} and ${answered}; Gradle said: ${saw:-nothing about it}; Android's last crash and watchdog lines: ${system:-none}"
   echo "::error title=$(basename "$OUT") instrumented::${why}. The tests that never started run again after it"
   status=1
   WHY="$why" CUT="$cut_in" python3 - "$OUT/instrumented" <<'PY'
@@ -176,7 +185,7 @@ for f in glob.glob(f"{sys.argv[1]}/**/*.xml", recursive=True):
     if changed:
         tree.write(f, encoding="utf-8", xml_declaration=True)
 PY
-  if answers || python3 "$ROOT/qa/daily/device_checks.py" --bring-back; then
+  if healthy || python3 "$ROOT/qa/daily/device_checks.py" --bring-back; then
     # What ran (or started) in the first pass, then every test the suite has, from a dry run
     # (the runner's log=true lists each test without running it).
     grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" | sed -nE 's/.*(started|finished): ([A-Za-z0-9_]+)\(([A-Za-z0-9_.]+)\).*/\3#\2/p' | sort -u > "$OUT/tests-started.txt"
@@ -203,16 +212,18 @@ PY
       timeout 30 adb logcat -c >/dev/null 2>&1 || true
       adb logcat -v time -s TestRunner:I GuardianTrace:I GuardianDiag:I UiDump:I DeviceRule:W ScamScenario:I >> "$OUT/logcat-diag.txt" 2>/dev/null &
       diag_pid=$!
+      adb logcat -v time -b main,system,crash -s "${SYSTEM_TAGS[@]}" >> "$OUT/logcat-system.txt" 2>/dev/null &
+      system_pid=$!
       rest=$((SUITE_LIMIT - ($(date +%s) - suite_start)))
       [ "$rest" -gt 900 ] || rest=900
       run_suite resumed "$rest" "-Pandroid.testInstrumentationRunnerArguments.class=$left"
       [ $rc -eq 0 ] || status=1
       timeout 120 adb logcat -d -v time > "$OUT/logcat-resumed.txt" 2>/dev/null || true
-      kill "$diag_pid" 2>/dev/null || true
+      kill "$diag_pid" "$system_pid" 2>/dev/null || true
       mkdir -p "$OUT/instrumented-resumed"
       cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented-resumed/" 2>/dev/null || true
     else
-      echo "::warning title=$(basename "$OUT") instrumented::the dry run listed no test that hadn't started (see gradle-list.txt)"
+      echo "::warning title=$(basename "$OUT") instrumented::the dry run listed no test that hadn't started; Gradle's last lines: $(grep -vE '^\s*$' "$OUT/gradle-list.txt" | tail -6 | cut -c1-200 | tr '\n' ' ')"
     fi
   else
     echo "::error title=$(basename "$OUT") instrumented::the emulator couldn't be brought back, so the tests after ${cut_in#*.device.} didn't run"

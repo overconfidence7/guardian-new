@@ -203,8 +203,12 @@ def relaunch_emulator(why: str) -> None:
 
 
 def emulator_answers() -> bool:
+    """The emulator answers adb and Android's package service answers too. On 11-04 (API 29,
+    twice) the package service died during a stand-in's `pm install` while `adb shell true`
+    still worked, and every later pm command hung or failed with "Broken pipe"."""
     try:
-        return subprocess.run(["adb", "shell", "true"], capture_output=True, timeout=30).returncode == 0
+        res = subprocess.run(["adb", "shell", "pm path android"], capture_output=True, text=True, timeout=30)
+        return res.returncode == 0 and "package:" in res.stdout
     except subprocess.TimeoutExpired:
         return False
 
