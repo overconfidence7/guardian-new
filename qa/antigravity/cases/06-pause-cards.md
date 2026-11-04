@@ -120,7 +120,7 @@ Suspect S-03. **Steps:** level Guided, locked. Pull down the shade and tap "Paus
 
 ### GM-PAUSE-040 · Under 2 seconds, on the budget emulator  `P0`
 **Steps:** on `gm-api29-budget`, run GM-PAUSE-001 ten times with a screen recording. Also with the screen just turned on (call ends, screen off, then the parent unlocks and opens Chase).
-**Expect:** card within 2 s every time. Report min / median / max. Any time Chase is usable for longer is a P0.
+**Expect:** card within 2 s every time, timed from Chase coming to the front to the card covering it (on the emulator, Usage access timestamps both). Report min / median / max. Any time Chase is usable for longer is a P0.
 
 ### GM-PAUSE-041 · Without "Display over other apps"  `P1`
 **Steps:** deny overlay (`appops set ... SYSTEM_ALERT_WINDOW deny`), keep Guardian as home. Then also remove the home role.

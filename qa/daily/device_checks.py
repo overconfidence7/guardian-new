@@ -203,8 +203,12 @@ def relaunch_emulator(why: str) -> None:
 
 
 def emulator_answers() -> bool:
+    """The emulator answers adb and Android's package service answers too. On 11-04 (API 29,
+    twice) the package service died during a stand-in's `pm install` while `adb shell true`
+    still worked, and every later pm command hung or failed with "Broken pipe"."""
     try:
-        return subprocess.run(["adb", "shell", "true"], capture_output=True, timeout=30).returncode == 0
+        res = subprocess.run(["adb", "shell", "pm path android"], capture_output=True, text=True, timeout=30)
+        return res.returncode == 0 and "package:" in res.stdout
     except subprocess.TimeoutExpired:
         return False
 
@@ -383,6 +387,15 @@ def fresh_app(apk: str) -> None:
     wake()
     sh("input keyevent KEYCODE_HOME")
     time.sleep(3)
+
+
+def installed(package: str) -> bool:
+    """Whether exactly [package] is installed. `pm list packages <name>` lists every package
+    whose name contains it, and the test APK (app.guardianmode.debug.test) stays installed
+    when the instrumented suite ends early: on 11-04's API 29 run the emulator stopped
+    answering during the suite, Gradle couldn't uninstall it ("Broken pipe"), and ROB-011 read
+    the test APK as Guardian still being there."""
+    return f"package:{package}" in sh(f"pm list packages {package}").split()
 
 
 def service_running() -> bool:
@@ -1000,8 +1013,9 @@ def reinstall_starts_fresh(apk: str, **_) -> None:
     time.sleep(3)
     check(read_state().get("onboardingDone") is True, "setup wasn't saved as done before the uninstall")
     sh(f"run-as {PKG} sh -c 'mkdir -p files/photos && echo x > files/photos/local-gm-rob-011.jpg'")
-    sh(f"pm uninstall {PKG}")
-    check(PKG not in sh(f"pm list packages {PKG}"), "Guardian is still installed after pm uninstall")
+    said = sh(f"pm uninstall {PKG}").strip()
+    check(not installed(PKG), f"Guardian is still installed after pm uninstall (pm said {said[:200]!r}; "
+                              f"packages: {sh(f'pm list packages {PKG}').split()})")
     adb("install", "-r", apk, timeout=300)
     wake()
     left = sh(f"run-as {PKG} ls files files/datastore files/photos").strip()
@@ -1255,16 +1269,29 @@ CHECKS = [
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--apk", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--apk")
+    ap.add_argument("--out")
     ap.add_argument("--suite", default="device-host")
     ap.add_argument("--no-device", action="store_true", help="only the checks that read the APK")
+    ap.add_argument("--bring-back", action="store_true",
+                    help="only make sure the emulator answers adb, cold-starting it if not (run-device-suite.sh, "
+                         "after the instrumented suite lost it); exit 1 if it still doesn't")
     args = ap.parse_args()
+    if args.bring_back:
+        global avd_name
+        avd_name = find_avd_name()
+        try:
+            ensure_emulator()
+        except Exception as e:  # noqa: BLE001 - said once, the caller decides
+            print(f"the emulator couldn't be brought back: {e}")
+            return 1
+        return 0
+    if not args.apk or not args.out:
+        ap.error("--apk and --out are required")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     if not args.no_device:
-        global avd_name
         avd_name = find_avd_name()
     suite = ET.Element("testsuite", name=args.suite)
     failures = 0
