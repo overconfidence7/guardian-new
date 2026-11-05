@@ -13,6 +13,7 @@ recorded and the next check starts from a fresh install of the app.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ import subprocess
 import sys
 import time
 import traceback
+import urllib.request
 import xml.etree.ElementTree as ET
 import zlib
 from pathlib import Path
@@ -1171,6 +1173,129 @@ def survives_update(apk: str, **_) -> None:
     check(kept is not None, f"Guardian lost the home role after the update (home before: {home_before!r}; 30 s after: {home_holders()!r})")
 
 
+TESTING_APK_URL = (
+    f"https://github.com/{os.environ.get('GITHUB_REPOSITORY', 'overconfidence7/guardian-new')}"
+    "/releases/download/testing/guardian-mode-test.apk"
+)
+
+
+def package_version() -> str:
+    out = sh(f"dumpsys package {PKG}")
+    name = re.search(r"versionName=(\S+)", out)
+    code = re.search(r"versionCode=(\d+)", out)
+    return f"{name.group(1) if name else '?'} (versionCode {code.group(1) if code else '?'})"
+
+
+def download_testing_apk(dest: Path) -> None:
+    """The APK on the rolling "testing" release (test-apk.yml), what a test phone has."""
+    last = ""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(TESTING_APK_URL, timeout=120) as res, dest.open("wb") as out:
+                shutil.copyfileobj(res, out)
+            if dest.stat().st_size > 1_000_000:
+                return
+            last = f"only {dest.stat().st_size} bytes"
+        except Exception as e:  # noqa: BLE001 - retried, then said
+            last = str(e)
+        # test-apk.yml deletes the release and makes it again on every push to main.
+        time.sleep(20 * (attempt + 1))
+    raise CheckFailed(f"couldn't download the testing build from {TESTING_APK_URL}: {last}")
+
+
+def install(*args: str) -> str:
+    """`adb install`, with what it printed on both streams (the failure reason goes to stderr)."""
+    res = subprocess.run(["adb", "install", *args], capture_output=True, text=True, timeout=300)
+    return f"{res.stdout.strip()} {res.stderr.strip()}".strip()
+
+
+def apk_signer(path: str) -> str:
+    """The APK's signing certificate digest, when apksigner is at hand (for the failure message)."""
+    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    tools = sorted(Path(sdk_root, "build-tools").glob("*/apksigner")) if sdk_root else []
+    if not tools:
+        return "?"
+    out = run_quietly([str(tools[-1]), "verify", "--print-certs", path], timeout=120)
+    found = re.search(r"SHA-256 digest: ([0-9a-f]+)", out)
+    return found.group(1)[:16] if found else "?"
+
+
+def upgrade_from_testing_build(apk: str, **_) -> None:
+    """GM-ROB-012: the testing build a test phone has (the "testing" release), set up in solo
+    mode with the parent's settings (Guided, a lock code, a photo, every consent answered),
+    then this build installed over it with `adb install -r`, as a phone gets the next testing
+    build. CI signs with the same test key (android/testing) and a higher versionCode, so it is
+    a real update. Everything must be kept, and the service must come back by itself."""
+    previous = Path("guardian-mode-test.apk")
+    download_testing_apk(previous)
+    try:
+        sh(f"pm uninstall {PKG}")
+        out = install(str(previous))
+        check("Success" in out, f"the testing build didn't install: {out[-400:]}")
+        before_version = package_version()
+        grant_everything()
+        write_state({"onboardingDone": True})
+        wake()
+        sh("input keyevent KEYCODE_HOME")
+        check(wait_for(service_running, 60) is not None, f"the testing build's service never started ({diagnosis()})")
+        check(wait_for(lambda: "config" in read_state(), 30) is not None, "the testing build never saved its settings")
+
+        # The parent's settings, on top of what the testing build saved itself.
+        state = read_state()
+        salt = "gm-rob-012-salt"
+        state["config"]["lock"]["level"] = "GUIDED"
+        photo_id = "local-gm-rob-012"
+        state.update({
+            "consent": {k: True for k in ("home", "pause", "calls", "checkIn", "reminders", "battery")},
+            "consentAcceptedAt": int(time.time() * 1000) - 86_400_000,
+            "lockCodeSalt": salt,
+            "lockCodeHash": hashlib.sha256(f"{salt}:2580".encode()).hexdigest(),
+            "localPhotos": [{"id": photo_id, "url": f"file:///data/user/0/{PKG}/files/photos/{photo_id}.jpg",
+                             "fromName": "", "createdAt": int(time.time() * 1000)}],
+        })
+        write_state(state)
+        png = Path("gm-photo.png")
+        solid_png(png, PHOTO_RGB)
+        adb("push", str(png), "/data/local/tmp/gm-photo.png")
+        png.unlink()
+        sh(f"run-as {PKG} mkdir -p files/photos")
+        sh(f"run-as {PKG} sh -c 'cat /data/local/tmp/gm-photo.png > files/photos/{photo_id}.jpg'")
+        sh("rm /data/local/tmp/gm-photo.png")
+        wake()
+        sh("input keyevent KEYCODE_HOME")
+        check(wait_for(service_running, 60) is not None, "the testing build's service didn't start again with the parent's settings")
+        check(wait_for(photo_showing, 20) is not None, f"the testing build doesn't show the photo on its home screen ({top_activity()})")
+        time.sleep(3)
+        before = read_state()
+        check(before.get("config", {}).get("lock", {}).get("level") == "GUIDED", "the testing build didn't keep the Guided level it was given")
+
+        # Leave Guardian in front, as on a phone, and install over it without opening anything after.
+        out = install("-r", apk)
+        check("Success" in out, f"this build didn't install over the testing build: {out[-400:]} "
+                                f"(signers: testing {apk_signer(str(previous))}, this build {apk_signer(apk)}; installed {before_version})")
+        after_version = package_version()
+        measurements["Upgrade from the testing build: version before"] = before_version
+        measurements["Upgrade from the testing build: version after"] = after_version
+        took = wait_for(service_running, 60)
+        check(took is not None, f"the service didn't come back by itself after the update ({diagnosis()})")
+        measurements["Upgrade from the testing build: update to service running"] = f"{took:.0f} s"
+
+        after = read_state()
+        for key in ("onboardingDone", "consent", "consentAcceptedAt", "lockCodeHash", "lockCodeSalt", "localPhotos"):
+            check(after.get(key) == before.get(key), f"{key} changed across the update: {before.get(key)!r} -> {after.get(key)!r}")
+        changed = sorted(k for k, v in before.get("config", {}).items() if after.get("config", {}).get(k) != v)
+        check(not changed, f"settings changed across the update: {changed} (lock level after: {after.get('config', {}).get('lock')})")
+        size = sh(f"run-as {PKG} stat -c %s files/photos/{photo_id}.jpg").strip()
+        check(size.isdigit() and int(size) > 0, f"the photo's file is gone after the update ({size or 'no output'})")
+        kept = wait_for(lambda: PKG in home_holders(), 30)
+        check(kept is not None, f"Guardian lost the home role after the update ({home_holders()!r})")
+        wake()
+        sh("input keyevent KEYCODE_HOME")
+        check(wait_for(photo_showing, 20) is not None, f"the photo card isn't showing the picture after the update ({top_activity()})")
+    finally:
+        previous.unlink(missing_ok=True)
+
+
 def force_stop_then_home(apk: str, **_) -> None:
     """GM-SVC-008: after a force stop, pressing Home brings protection back."""
     fresh_app(apk)
@@ -1257,6 +1382,7 @@ CHECKS = [
     ("gm_priv_023_noBannedCapabilitiesInPractice", no_banned_capabilities, True),
     ("gm_perf_007_homeScreenMemory", memory, True),
     ("gm_svc_007_survivesUpdate", survives_update, True),
+    ("gm_rob_012_upgradeFromTheTestingBuild", upgrade_from_testing_build, True),
     ("gm_svc_008_forceStopThenHome", force_stop_then_home, True),
     ("gm_svc_003_stoppedFromActiveAppsComesBackOnHome", stopped_from_active_apps, True),
     ("gm_svc_009_unknownCallDuringDoze", doze_call, True),

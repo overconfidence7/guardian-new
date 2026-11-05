@@ -36,6 +36,12 @@ android {
     }
 
     signingConfigs {
+        // The device job signs with the testing release's key (android/testing), so its APK
+        // installs over guardian-mode-test.apk. Named here rather than copied to
+        // ~/.android, which the emulator runner's own Android home can shadow.
+        getByName("debug") {
+            System.getenv("GUARDIAN_DEBUG_KEYSTORE")?.let { storeFile = file(it) }
+        }
         create("release") {
             val storePath = System.getenv("GUARDIAN_UPLOAD_KEYSTORE")
             if (storePath != null) {

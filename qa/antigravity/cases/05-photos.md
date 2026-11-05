@@ -10,6 +10,7 @@ Put test images on the emulator first: `adb push <file> /sdcard/Pictures/` then 
 ### GM-PHOTO-002 · Add from the picker  `P0`
 **Steps:** "Add photos from this phone", pick three images.
 **Expect:** no permission prompt (the system picker needs none). All three appear on "Family photos" newest first. The home screen photo card shows the newest. No `READ_MEDIA_IMAGES` permission requested at any point.
+**In the cloud:** `PhotoDeviceTest.gm_photo_002_addFromThePickerWithoutAPermission` (API 29, 33, 36): "Add photos from this phone" opens Android's own picker (the photo picker, or the documents picker it falls back to; which one is logged) with no permission dialog, and backing out adds nothing. Then three pictures are handed back the way the picker returns them (picking inside Android's picker is its own UI, different on every level, so that tap is stood in for): all three are saved newest first (the last picked on top, checked by each file's colour), the page shows them, and the home photo card's pixels are the newest picture's colour. Guardian requests none of `READ_MEDIA_IMAGES`, `READ_MEDIA_VISUAL_USER_SELECTED`, `READ_EXTERNAL_STORAGE` or `ACCESS_MEDIA_LOCATION`, and no permission screen resumed during the test.
 
 ### GM-PHOTO-003 · Share one picture from another app  `P0` `[AVD]` `[PHONE]`
 **Steps:** in Google Photos (or the Files app / gallery on the emulator), open a picture, Share, pick "Add to photo card" (record the exact label and icon in the share sheet).

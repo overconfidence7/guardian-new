@@ -1,6 +1,8 @@
 package app.guardianmode
 
+import android.content.Intent
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -27,7 +29,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.guardianmode.UiChecks.allText
 import app.guardianmode.core.LockLevel
+import app.guardianmode.protection.BootReceiver
 import app.guardianmode.protection.Features
+import app.guardianmode.protection.GuardianService
+import app.guardianmode.protection.PhoneStateReceiver
 import app.guardianmode.ui.onboarding.ConsentPages
 import app.guardianmode.ui.onboarding.OnboardingActivity
 import com.google.common.truth.Truth.assertThat
@@ -306,6 +311,61 @@ class FirstRunTest {
         tap("Not now")
         shown(ConsentPages.all[2].title)
         shown("Skip for now")
+    }
+
+    /**
+     * GM-PRIV-021: nothing is collected or sent until the parent has finished the consent pages.
+     * Guardian collects through its service (which app is in front, the status report with the
+     * app list for helpers), so the service must not start before "Go to my home screen", even
+     * when a call comes in halfway through setup (Android tells Guardian about calls as soon as
+     * page 3 allows phone state) or the app is updated. Which Android screens each page asks
+     * for, and only after its "Turn on", is gm_cons_001 and gm_cons_002.
+     */
+    @Test fun gm_priv_021_nothingRunsBeforeTheConsentPagesAreFinished() {
+        val app = rule.activity.application
+        fun startedServices(): List<String> =
+            generateSequence { shadowOf(app).nextStartedService }.map { it.component?.className.orEmpty() }.toList()
+        fun callAndUpdateMidSetup() {
+            for (state in listOf(TelephonyManager.EXTRA_STATE_RINGING, TelephonyManager.EXTRA_STATE_OFFHOOK, TelephonyManager.EXTRA_STATE_IDLE)) {
+                PhoneStateReceiver().onReceive(app, Intent(TelephonyManager.ACTION_PHONE_STATE_CHANGED).putExtra(TelephonyManager.EXTRA_STATE, state))
+            }
+            BootReceiver().onReceive(app, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
+            rule.waitForIdle()
+        }
+        val service = GuardianService::class.java.name
+
+        assertWithMessage("services started before setup").that(startedServices()).doesNotContain(service)
+        toConsent()
+        ConsentPages.all.forEachIndexed { i, page ->
+            shown(page.title)
+            callAndUpdateMidSetup()
+            assertWithMessage("services started on page ${i + 1} before its Turn on").that(startedServices()).doesNotContain(service)
+            tap("Turn on")
+            awaitConsent(page.key, true)
+            callAndUpdateMidSetup()
+            assertWithMessage("services started after page ${i + 1}'s Turn on").that(startedServices()).doesNotContain(service)
+            rule.waitUntil(5_000) {
+                listOf("Skip for now", "Next").any { rule.onAllNodesWithText(it).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
+            }
+            tap(if (rule.onAllNodesWithText("Next").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) "Next" else "Skip for now")
+        }
+        shown("How locked down should this phone be?")
+        tap("Next")
+        shown("Pick a lock code")
+        rule.onNode(hasContentDescription("New code") and hasSetTextAction()).performTextInput("2580")
+        tap("Next")
+        rule.onNode(hasContentDescription("Same code again") and hasSetTextAction()).performTextInput("2580")
+        tap("Save this code")
+        shown("You're all set.")
+        callAndUpdateMidSetup()
+        assertWithMessage("services started before \"Go to my home screen\"").that(startedServices()).doesNotContain(service)
+        assertThat(store.current.onboardingDone).isFalse()
+
+        tap("Go to my home screen")
+        rule.waitUntil(5_000) { store.current.onboardingDone }
+        rule.waitUntil(5_000) { shadowOf(app).peekNextStartedService() != null }
+        assertWithMessage("protection starts once setup is finished").that(startedServices()).contains(service)
+        assertThat(store.current.consent.values.all { it }).isTrue()
     }
 
     @Test fun gm_cons_017_consentWordingHasNoAndroidJargon() {

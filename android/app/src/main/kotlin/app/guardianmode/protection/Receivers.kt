@@ -19,6 +19,9 @@ class PhoneStateReceiver : BroadcastReceiver() {
             else -> return
         }
         val container = (context.applicationContext as GuardianApp).container
+        // Nothing runs before setup is finished (GM-PRIV-021): Android starts sending calls as
+        // soon as page 3 allows phone state, while the parent is still reading the other pages.
+        if (!container.store.current.onboardingDone) return
         container.brain.onCallState(state)
         // Make sure the watcher is running while a call is live so it can see apps opening.
         GuardianService.start(context)

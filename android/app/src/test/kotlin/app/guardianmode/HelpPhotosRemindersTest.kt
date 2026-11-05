@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.guardianmode.core.EventType
 import app.guardianmode.core.Reminder
 import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.data.LocalState
@@ -24,6 +25,7 @@ import app.guardianmode.ui.home.PhotosScreen
 import app.guardianmode.ui.home.RemindersScreen
 import app.guardianmode.ui.theme.GuardianTheme
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -82,6 +84,37 @@ class HelpPhotosRemindersTest {
             rule.onNodeWithText("Take a picture of my screen").assertExists()
             rule.onNodeWithText("Call Sarah").assertExists()
         }
+    }
+
+    /**
+     * "Don't send" on the preview: the picture is deleted from cache/help, nothing is
+     * recorded or queued for the family (no HELP_REQUESTED, the outbox unchanged), and the
+     * page closes. Nothing can be uploaded: only "Send to Sarah" calls the upload, and an
+     * upload without its HELP_REQUESTED event never happens (HelpActivity.send).
+     */
+    @Test fun gm_help_005_dontSendDeletesThePictureAndSendsNothing() {
+        withState(Fixtures.state)
+        val before = app.container.store.current
+        val dir = File(app.cacheDir, "help").apply { mkdirs() }
+        val picture = File(dir, "gm-help-005.jpg")
+        picture.outputStream().use { Bitmap.createBitmap(108, 234, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.JPEG, 82, it) }
+
+        ActivityScenario.launch<HelpActivity>(HelpActivity.previewIntent(app, picture.absolutePath)).use { scenario ->
+            rule.waitForIdle()
+            rule.onNodeWithText("Send this to Sarah?").assertExists()
+            rule.onNodeWithText("Send to Sarah").assertExists()
+            rule.onNode(hasText("Don't send") and hasClickAction()).performClick()
+            rule.waitForIdle()
+            assertThat(picture.exists()).isFalse()
+            assertThat(dir.listFiles().orEmpty().toList()).isEmpty()
+            rule.onNodeWithText("Sending...").assertDoesNotExist()
+            rule.onNodeWithText("Sent").assertDoesNotExist()
+            scenario.onActivity { assertWithMessage("the preview closes").that(it.isFinishing).isTrue() }
+        }
+        val after = app.container.store.current
+        assertThat((after.sharedEvents + after.outbox).map { it.type }).doesNotContain(EventType.HELP_REQUESTED)
+        assertThat(after.outbox).isEqualTo(before.outbox)
+        assertThat(after.sharedEvents).isEqualTo(before.sharedEvents)
     }
 }
 

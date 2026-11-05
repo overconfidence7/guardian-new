@@ -39,6 +39,13 @@ jobs:
     name: Instrumented tests (API ${{ inputs.api-level || '36' }})
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    # For every Gradle run in this job, the suite's own included: the testing release's key and
+    # a versionCode above any testing build's, so the APK here installs over
+    # guardian-mode-test.apk the way the next testing build would
+    # (device_checks.py gm_rob_012_upgradeFromTheTestingBuild).
+    env:
+      GUARDIAN_VERSION_CODE: "1000000"
+      GUARDIAN_DEBUG_KEYSTORE: ${{ github.workspace }}/android/testing/test-debug.keystore
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

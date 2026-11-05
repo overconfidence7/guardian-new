@@ -19,9 +19,11 @@ Suspect S-07. **Steps:** solo default, tap the Help tile, and the notification's
 
 ### GM-HELP-004 · Android asks every time  `P0` `[B]`
 **Expect:** a second Help, minutes later, shows Android's consent dialog again. Cancelling it changes nothing and sends nothing.
+**In the cloud:** `HelpDeviceTest.gm_help_004_androidAsksEveryTimeAndCancelChangesNothing` (API 29, 33, 36), linked to a family in the saved state: "Take a picture of my screen" brings up Android's own dialog (not Guardian's; its words are logged), and Cancel goes back to Help with no capture service running, no picture in `cache/help`, no preview, no "Your picture is ready", nothing recorded and nothing queued to send. Help is closed, and 70 s later the same steps show Android's dialog again with the same result. Without a Firebase emulator in the device job, "nothing sent" is the empty outbox and no `HELP_REQUESTED` event.
 
 ### GM-HELP-005 · "Don't send"  `P0` `[B]`
 **Expect:** nothing uploaded (Storage emulator `help/` folder unchanged, no `HELP_REQUESTED` event), the picture file deleted from the app's cache (`run-as ... ls cache/help`).
+**In the cloud:** `HelpPhotosRemindersTest.gm_help_005_dontSendDeletesThePictureAndSendsNothing` (JVM, Robolectric): the real preview ("Send this to Sarah?") opened on a picture in `cache/help`; "Don't send" deletes it (the folder is empty), closes the page without "Sending..." or "Sent", records no `HELP_REQUESTED` and leaves the outbox and shared events as they were. The upload is only called from "Send to Sarah", so nothing reaches Storage.
 
 ### GM-HELP-006 · "Send"  `P0` `[B]`
 **Expect:** "Sending...", then "Sent" / "Sarah will see your picture and your note." with "Call Sarah now" and "Done". In the emulator: one JPEG under `families/<f>/devices/<d>/help/`, one `HELP_REQUESTED` event with the note and path, the dashboard shows it with the picture. The local copy is deleted.
