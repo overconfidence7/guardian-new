@@ -47,6 +47,7 @@ Budget phones kill apps, lose signal, run out of storage, and get their settings
 ### GM-ROB-012 · Upgrade from the previous testing build  `P0` `[PHONE]`
 **Steps:** the phone already has an older testing build in solo mode with Nate's settings. With Nate's OK, install the current `guardian-mode-test.apk` over it (`adb install -r`).
 **Expect:** installs over (same test key), keeps setup, lock level, code, photos and consent. The service restarts by itself. Record the version before and after.
+**In the cloud:** `device_checks.py` `gm_rob_012_upgradeFromTheTestingBuild` (API 29 and 36) downloads `guardian-mode-test.apk` from the "testing" release, sets it up in solo mode with the parent's settings (Guided, a lock code, a photo on the home screen, every consent page answered), then installs this build over it with `adb install -r`. The device job signs with the same test key (`android/testing`) and a higher versionCode, so this is a real update. Setup, consent, the lock level and every other setting, the code's hash and salt, the photo and its file, and the home role are all kept, the service comes back by itself, and the photo card still shows the picture. Both versions go to the report's measurements.
 
 ### GM-ROB-013 · Rapid taps  `P2`
 **Steps:** double- and triple-tap every button that starts something: "Turn on", "Continue", "Call Sarah first", "Send", "Save this code", "Unlock".

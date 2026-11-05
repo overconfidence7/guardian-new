@@ -11,6 +11,7 @@ import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.TrafficStats
 import android.net.Uri
 import android.os.Process
 import android.provider.MediaStore
@@ -18,6 +19,7 @@ import android.system.Os
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
+import app.guardianmode.core.EventType
 import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceFixtures.UNKNOWN
 import app.guardianmode.support.DeviceRule
@@ -28,6 +30,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.net.Inet6Address
+import java.net.InetAddress
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 /**
  * qa/antigravity/cases/14-privacy-security-policy.md, the parts a device can check:
@@ -71,6 +78,112 @@ class PrivacyDeviceTest {
             for (form in unknownForms) assertWithMessage("${file.path} holds $form").that(text.contains(form)).isFalse()
         }
     }
+
+    /**
+     * GM-PRIV-001: in solo mode Guardian connects nowhere while it does its job: a long call
+     * from a stranger (recorded as an event, which is what must not leave), a pause card during
+     * it, the safe-word card after it and a remote-control warning. Every socket Guardian's uid
+     * holds is read from /proc/net as the shell (as `netstat` does) every 250 ms. The only ones
+     * allowed are the test's own emulator console (10.0.2.2:5554) and HTTPS to Google, which is
+     * where Firebase's start-up attempts go; anything else fails, and so does any connection to
+     * the Firebase emulators on 10.0.2.2, which is where this build would send events. Setup in
+     * solo mode never calls the cloud (CloudSync does nothing without a pairing).
+     */
+    @Test fun gm_priv_001_soloModeConnectsNowhere() {
+        rule.requireConsole()
+        rule.requireStubApk(StubApp.ANYDESK)
+        rule.setState(DeviceFixtures.soloState.let {
+            it.copy(config = it.config.copy(protection = it.config.protection.copy(longCallAlert = it.config.protection.longCallAlert.copy(minutes = 1))))
+        })
+        val uid = Process.myUid()
+        check(readSockets(uid) != null) { "couldn't read /proc/net as the shell" }
+        Thread.sleep(3_000)
+        val seen = Collections.synchronizedSet(linkedSetOf<String>())
+        val watching = AtomicBoolean(true)
+        val watcher = thread(name = "gm-priv-001-sockets") {
+            while (watching.get()) {
+                readSockets(uid)?.let { seen += it }
+                Thread.sleep(250)
+            }
+        }
+        val txBefore = TrafficStats.getUidTxBytes(uid)
+        val rxBefore = TrafficStats.getUidRxBytes(uid)
+        try {
+            rule.startAnsweredCall(UNKNOWN)
+            rule.open(StubApp.CHASE)
+            assertThat(rule.waitFor(rule.pauseCard)).isTrue()
+            rule.tap("I'm fine, continue")
+            assertWithMessage("long-call event recorded").that(rule.waitForEvent(EventType.LONG_UNKNOWN_CALL, timeoutMs = 90_000)).isNotNull()
+            rule.hangUp(UNKNOWN)
+            rule.dismissSafeWordCard()
+            assertThat(rule.installStub(StubApp.ANYDESK)).contains("Success")
+            assertWithMessage("remote-control warning").that(rule.waitText("AnyDesk can let someone control your phone.", 15_000)).isTrue()
+            rule.tap("I trust this app")
+            Thread.sleep(5_000)
+        } finally {
+            watching.set(false)
+            watcher.join(5_000)
+        }
+        val tx = TrafficStats.getUidTxBytes(uid) - txBefore
+        val rx = TrafficStats.getUidRxBytes(uid) - rxBefore
+        assertWithMessage("events recorded during the run").that(rule.state.sharedEvents.map { it.type }).containsAtLeast(EventType.LONG_UNKNOWN_CALL, EventType.PAUSE_SHOWN)
+        assertWithMessage("solo mode has nothing to upload to").that(rule.state.pairing).isNull()
+
+        val endpoints = seen.toSortedSet()
+        val described = endpoints.associateWith { endpoint ->
+            val (host, port) = endpoint.substringAfter(' ').let { it.substringBeforeLast(':') to it.substringAfterLast(':').toInt() }
+            val name = if (host == CONSOLE_HOST && port == CONSOLE_PORT) "the test's emulator console" else runCatching { InetAddress.getByName(host).canonicalHostName }.getOrDefault(host)
+            "$endpoint ($name)"
+        }
+        Log.i(TAG, "GM-PRIV-001 Guardian's uid sent $tx and received $rx bytes (the console included); endpoints: ${described.values.ifEmpty { listOf("none") }}")
+        val firebaseEmulators = endpoints.filter { it.substringAfter(' ').startsWith("$CONSOLE_HOST:") && !it.endsWith(":$CONSOLE_PORT") }
+        assertWithMessage("connections to the Firebase emulators (where this build sends events)").that(firebaseEmulators).isEmpty()
+        val unexpected = endpoints.filterNot { endpoint ->
+            val port = endpoint.substringAfterLast(':')
+            val name = described.getValue(endpoint)
+            endpoint.endsWith("$CONSOLE_HOST:$CONSOLE_PORT") ||
+                (port == "443" && GOOGLE.any { name.contains(it) })
+        }
+        assertWithMessage("connections other than Firebase start-up to Google: ${unexpected.map { described.getValue(it) }}").that(unexpected).isEmpty()
+    }
+
+    /**
+     * Remote ends of every TCP and UDP socket [uid] holds right now, as "tcp 1.2.3.4:443", or
+     * null if /proc/net can't be read. Sockets with no remote end (listening, unconnected) and
+     * loopback are left out.
+     */
+    private fun readSockets(uid: Int): Set<String>? {
+        val out = mutableSetOf<String>()
+        var tables = 0
+        for (proto in listOf("tcp", "tcp6", "udp", "udp6")) {
+            val text = rule.shell("cat /proc/net/$proto")
+            if (!text.trimStart().startsWith("sl")) continue
+            tables++
+            for (line in text.lines().drop(1)) {
+                val f = line.trim().split(Regex("\\s+"))
+                if (f.size < 8 || f[7].toIntOrNull() != uid) continue
+                val remote = decode(f[2]) ?: continue
+                if (remote.startsWith("127.") || remote.startsWith("[::1]") || remote.endsWith(":0")) continue
+                out += "${proto.removeSuffix("6")} $remote"
+            }
+        }
+        return if (tables == 0) null else out
+    }
+
+    /** "0100007F:1F90" → "127.0.0.1:8080"; IPv6 too, with IPv4-mapped addresses as IPv4. */
+    private fun decode(hexEndpoint: String): String? = runCatching {
+        val (addr, portHex) = hexEndpoint.split(':')
+        val port = portHex.toInt(16)
+        // /proc/net writes each 32-bit word of the address in the kernel's (little-endian) order.
+        val bytes = addr.chunked(8).flatMap { word -> word.chunked(2).map { it.toInt(16).toByte() }.reversed() }.toByteArray()
+        val ip = InetAddress.getByAddress(bytes)
+        val text = if (ip is Inet6Address && bytes.take(10).all { it == 0.toByte() } && bytes[10] == 0xFF.toByte() && bytes[11] == 0xFF.toByte()) {
+            InetAddress.getByAddress(bytes.copyOfRange(12, 16)).hostAddress
+        } else {
+            ip.hostAddress
+        }
+        if (ip.isAnyLocalAddress) "$text:0" else if (ip is Inet6Address && !text!!.contains('.')) "[$text]:$port" else "$text:$port"
+    }.getOrNull()
 
     @Test fun gm_priv_005_noBackups() {
         val info = rule.context.packageManager.getApplicationInfo(rule.pkg, 0)
@@ -239,5 +352,10 @@ class PrivacyDeviceTest {
 
     private companion object {
         const val TAG = "PrivacyDeviceTest"
+        const val CONSOLE_HOST = "10.0.2.2"
+        const val CONSOLE_PORT = 5554
+
+        /** Reverse names of Google's servers, where Firebase's start-up calls go. */
+        val GOOGLE = listOf(".1e100.net", ".google.com", ".googleapis.com", ".gstatic.com")
     }
 }

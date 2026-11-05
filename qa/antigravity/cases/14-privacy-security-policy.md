@@ -7,6 +7,7 @@ The promise (`docs/SPEC.md` bar 6, `docs/POLICY.md`, `docs/SECURITY.md`): events
 ### GM-PRIV-001 · Network traffic in solo mode  `P0`
 **Steps:** test APK, solo. Capture traffic while you run setup, a pause card, a remote-control warning and a long call: on `gm-api36` use the emulator's `-tcpdump capture.pcap` start option, or `adb shell` + a proxy if you set one up. Open the pcap in Wireshark (install only with Nate's OK) or summarize with `tshark`.
 **Expect:** no connections at all from Guardian except, at most, Firebase SDK start-up attempts to Google hosts that fail harmlessly (the test build points at a fake project). List every host contacted. Anything carrying event data in solo mode is a P0.
+**In the cloud:** `PrivacyDeviceTest.gm_priv_001_soloModeConnectsNowhere` (API 29, 33, 36), solo, while a stranger's call goes past the long-call threshold (an event is recorded), a pause card shows during it, the safe-word card after it, and AnyDesk's install warning: every TCP and UDP socket Guardian's uid holds is read from `/proc/net` every 250 ms. Only the test's own emulator console and HTTPS to Google (Firebase start-up) are allowed; any connection to the Firebase emulators on 10.0.2.2, where this build would send events, fails it. The endpoints with their reverse names and the bytes sent and received are logged. Setup isn't in it: in solo mode setup calls nothing in the cloud (every `CloudSync` call needs a pairing).
 
 ### GM-PRIV-002 · Everything written to Firestore  `P0` `[B]`
 **Steps:** after the full Track B run, export the Firestore emulator (`npx firebase emulators:export` while running, or browse the UI) and list every document under the device.
@@ -58,6 +59,7 @@ Take each line of "Never shared" on the transparency screen and each "Never shar
 
 ### GM-PRIV-021 · Disclosure before collection  `P0`
 **Expect:** no permission or data collection starts before the matching consent page's "Turn on" (GM-CONS-001). In Track B, no device doc writes (status, installed apps) happen before the parent finishes the consent pages; check timestamps in Firestore against when each page was tapped.
+**In the cloud:** `FirstRunTest.gm_priv_021_nothingRunsBeforeTheConsentPagesAreFinished` (JVM) walks the real setup with "Turn on" on every page and, on each page, a call (ringing, answered, ended) and an app update arriving: Guardian's service, which does all collection (which app is in front, the status report with the app list), doesn't start until "Go to my home screen", and starts then. It found that a call during setup started the service before setup was finished (`PhoneStateReceiver` didn't check, unlike app start and `BootReceiver`), so on a linked phone the status and app list could be written before the last consent page; fixed in the same change. No Android screen before a page's "Turn on" is `gm_cons_001`.
 
 ### GM-PRIV-022 · Visible and stoppable  `P0`
 **Expect:** while protection runs there's always the notification (GM-SVC-001) and the parent can stop protection (pause, switches, Stop using, Android's Active apps). Guardian has its own icon in the launcher list. Nothing hides the app.
