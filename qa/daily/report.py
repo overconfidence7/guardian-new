@@ -156,8 +156,20 @@ def release_check(repo: str, sha: str) -> Result:
             problems.append("the testing release is a draft")
         if not any(a.get("name") == "guardian-mode-test.apk" for a in rel.get("assets", [])):
             problems.append("guardian-mode-test.apk is missing from the release")
-        if ref.get("object", {}).get("sha") != sha:
-            problems.append(f"the testing tag points at {ref.get('object', {}).get('sha', '?')[:7]}, not {sha[:7]}")
+        tag_sha = ref.get("object", {}).get("sha", "?")
+        if tag_sha != sha:
+            # A merge to main while the suite runs (it takes hours) republishes the release from
+            # the newer commit before this report is written (2026-11-01 and 11-04). That is the
+            # release doing its job, so a tag ahead of the tested commit on main passes.
+            ahead = False
+            try:
+                ahead = get(f"compare/{sha}...{tag_sha}").get("status") == "ahead"
+            except Exception:  # noqa: BLE001
+                pass
+            if ahead:
+                r.message = f"the testing tag points at {tag_sha[:7]}, a newer commit on main than the tested {sha[:7]}"
+            else:
+                problems.append(f"the testing tag points at {tag_sha[:7]}, not {sha[:7]}")
         if problems:
             r.status, r.message = "failed", "; ".join(problems)
     except Exception as e:  # noqa: BLE001
