@@ -1203,6 +1203,23 @@ def download_testing_apk(dest: Path) -> None:
     raise CheckFailed(f"couldn't download the testing build from {TESTING_APK_URL}: {last}")
 
 
+def install(*args: str) -> str:
+    """`adb install`, with what it printed on both streams (the failure reason goes to stderr)."""
+    res = subprocess.run(["adb", "install", *args], capture_output=True, text=True, timeout=300)
+    return f"{res.stdout.strip()} {res.stderr.strip()}".strip()
+
+
+def apk_signer(path: str) -> str:
+    """The APK's signing certificate digest, when apksigner is at hand (for the failure message)."""
+    sdk_root = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    tools = sorted(Path(sdk_root, "build-tools").glob("*/apksigner")) if sdk_root else []
+    if not tools:
+        return "?"
+    out = run_quietly([str(tools[-1]), "verify", "--print-certs", path], timeout=120)
+    found = re.search(r"SHA-256 digest: ([0-9a-f]+)", out)
+    return found.group(1)[:16] if found else "?"
+
+
 def upgrade_from_testing_build(apk: str, **_) -> None:
     """GM-ROB-012: the testing build a test phone has (the "testing" release), set up in solo
     mode with the parent's settings (Guided, a lock code, a photo, every consent answered),
@@ -1213,8 +1230,8 @@ def upgrade_from_testing_build(apk: str, **_) -> None:
     download_testing_apk(previous)
     try:
         sh(f"pm uninstall {PKG}")
-        out = adb("install", str(previous), timeout=300, ok=False)
-        check("Success" in out, f"the testing build didn't install: {out.strip()[-300:]}")
+        out = install(str(previous))
+        check("Success" in out, f"the testing build didn't install: {out[-400:]}")
         before_version = package_version()
         grant_everything()
         write_state({"onboardingDone": True})
@@ -1253,8 +1270,9 @@ def upgrade_from_testing_build(apk: str, **_) -> None:
         check(before.get("config", {}).get("lock", {}).get("level") == "GUIDED", "the testing build didn't keep the Guided level it was given")
 
         # Leave Guardian in front, as on a phone, and install over it without opening anything after.
-        out = adb("install", "-r", apk, timeout=300, ok=False)
-        check("Success" in out, f"this build didn't install over the testing build: {out.strip()[-300:]}")
+        out = install("-r", apk)
+        check("Success" in out, f"this build didn't install over the testing build: {out[-400:]} "
+                                f"(signers: testing {apk_signer(str(previous))}, this build {apk_signer(apk)}; installed {before_version})")
         after_version = package_version()
         measurements["Upgrade from the testing build: version before"] = before_version
         measurements["Upgrade from the testing build: version after"] = after_version
