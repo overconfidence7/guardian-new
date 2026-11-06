@@ -56,8 +56,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The benchmark APK (release's shrinking, debug's package name) is only for the memory
+      # budget check, GM-PERF-007; every other check and test runs on the debug APK.
       - name: Build APKs
-        run: ./gradlew assembleDebug assembleDebugAndroidTest --no-daemon
+        run: ./gradlew assembleDebug assembleBenchmark assembleDebugAndroidTest --no-daemon
         working-directory: android
       - name: Build the stand-in apps
         run: ./gradlew assembleDebug --no-daemon

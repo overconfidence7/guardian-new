@@ -17,7 +17,8 @@ class GuardianApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         Notifications.createChannels(this)
-        container.cloud.initialize()
+        // Firebase comes up only on a paired phone (start() sets it up first); an unpaired
+        // phone runs the welcome and consent screens without it (GM-PERF-007).
         container.cloud.start()
         container.reminders.reschedule()
         // Reminders follow config edits from helpers.
