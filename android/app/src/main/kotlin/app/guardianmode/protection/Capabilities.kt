@@ -72,6 +72,15 @@ class Capabilities(private val context: Context) {
         return if (rm.isRoleAvailable(role)) rm.createRequestRoleIntent(role) else null
     }
 
+    /** The runtime permission behind [c], asked for with Android's own prompt, or null for a Settings switch. */
+    fun runtimePermission(c: Capability): String? = when (c) {
+        Capability.PHONE_STATE -> Manifest.permission.READ_PHONE_STATE
+        Capability.CONTACTS -> Manifest.permission.READ_CONTACTS
+        Capability.CALL_PHONE -> Manifest.permission.CALL_PHONE
+        Capability.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
+        else -> null
+    }
+
     /** The Settings screen that grants a special-access capability. Runtime permissions are requested separately. */
     fun settingsIntent(c: Capability): Intent? {
         val pkg = Uri.fromParts("package", context.packageName, null)

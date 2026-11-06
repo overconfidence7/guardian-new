@@ -45,6 +45,7 @@ import app.guardianmode.core.LockLevel
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.ChangeItem
 import app.guardianmode.data.HelperInfo
+import app.guardianmode.protection.Capability
 import app.guardianmode.ui.components.Avatar
 import app.guardianmode.ui.components.BigButton
 import app.guardianmode.ui.components.GuardianPage
@@ -63,6 +64,8 @@ data class TransparencyUi(
     val paired: Boolean,
     val lockLevel: LockLevel = LockLevel.SIMPLE,
     val hasCode: Boolean = false,
+    /** Permissions Android has taken back from something the parent said yes to. */
+    val missing: List<Capability> = emptyList(),
 )
 
 interface TransparencyActions {
@@ -73,6 +76,7 @@ interface TransparencyActions {
     fun onStopUsing()
     fun onBack()
     fun onLockSettings() {}
+    fun onTurnOn(capability: Capability) {}
 }
 
 private val TOGGLEABLE = setOf("pause", "remoteAccess", "longCall", "screening", "checkIn")
@@ -89,6 +93,23 @@ fun TransparencyScreen(ui: TransparencyUi, actions: TransparencyActions, zone: Z
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
+        if (ui.missing.isNotEmpty()) {
+            // Every consent screen has to be reachable again from here (docs/POLICY.md, "Prominent disclosure").
+            Section("Needs to be turned back on")
+            Text(
+                "Guardian is missing something it needs to do what you said yes to. Tap Turn on next to each one to fix it.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            ui.missing.forEach { capability ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(capability.plainName, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onBackground)
+                    TextButton(onClick = { actions.onTurnOn(capability) }, modifier = Modifier.heightIn(min = 64.dp)) {
+                        Text("Turn on", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(20.dp))
         if (ui.paused) {
             BigButton("Turn protection back on", actions::onResume, icon = Icons.Rounded.PlayCircle)

@@ -92,7 +92,8 @@ class ProtectionController(
         )
     }
 
-    private fun missingCapabilities(): List<Capability> {
+    /** What Android has to allow again for the things the parent said yes to. */
+    fun missingCapabilities(): List<Capability> {
         val consent = store.current.consent
         val needed = Capabilities.BY_FEATURE.filterKeys { consent[it] == true }.values.flatten().distinct()
         return capabilities.missing(needed)
