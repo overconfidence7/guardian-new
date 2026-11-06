@@ -14,6 +14,7 @@ From the partial run on 2026-10-19 (`2cd6b8e`, `gm-api36`). Fixes landed in PR #
 | S-09 | Ruled out | At Locked the Pixel launcher got a code screen, but it showed the package name; now "This app is locked". |
 | S-11 | Partly | Settings stayed uncovered in `GM-LOCK-041`; the run didn't record which permission was missing. Re-test. |
 | S-12 | Confirmed, fixed | Contacts was switched off from the permission manager without the code. The manager is now covered; permission prompts still show. |
+| S-13 | Confirmed, fixed | `GuardianBrain` now wires `CallTracker` with the screening role AND Contacts, so without the role no call counts as unknown: Sarah never arms the cards, and neither does a stranger until the role is held. The home chip tells the parent. |
 
 ### S-01 · Track B pairing may fail: no cleartext exception for the emulator host  (blocks Track B)
 `android/app/src/main/AndroidManifest.xml` has no `networkSecurityConfig` and there is no `src/debug` source set. Since Android 9, plain `http://` is blocked unless allowed, and the Firebase Auth, Functions and Storage emulators are plain HTTP on `10.0.2.2`. Firebase's own docs say Android apps need a cleartext exception for the emulator host.

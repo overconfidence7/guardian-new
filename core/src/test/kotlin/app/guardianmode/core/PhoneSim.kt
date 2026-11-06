@@ -8,7 +8,7 @@ package app.guardianmode.core
  * Android only asks the screening app about an incoming call when Guardian holds the
  * call-screening role, the number is visible, and either Guardian can read contacts or
  * the number isn't one of the phone's contacts. [ring] follows those rules so the
- * screening-role / READ_CONTACTS combinations (GM-PAUSE-009, suspect S-13) can be played.
+ * screening-role / READ_CONTACTS combinations (GM-PAUSE-009) can be played.
  */
 class PhoneSim(
     var config: DeviceConfig = DeviceConfig(),
@@ -24,8 +24,9 @@ class PhoneSim(
     private var ids = 0
     val screening = CallScreeningPolicy()
 
-    // GuardianBrain wires the tracker with screenerSeesContacts = READ_CONTACTS granted.
-    val tracker = CallTracker(screenerSeesContacts = { contactsGranted })
+    // GuardianBrain wires the tracker with screenerSeesContacts = screening role held AND
+    // READ_CONTACTS granted: only then can an unscreened call be read as a hidden number.
+    val tracker = CallTracker(screenerSeesContacts = { screeningRoleHeld && contactsGranted })
     val engine = TripwireEngine({ config }, newId = { "e${ids++}" })
 
     /** Everything the rules asked the phone to do, in order. */

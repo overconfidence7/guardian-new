@@ -41,7 +41,7 @@
 
 ### GM-SCRN-009 · Screening role taken away  `P1`
 **Steps:** remove the role with adb (or pick another caller ID app in Settings).
-**Expect:** calls ring as usual. Home chip "Check me". See GM-PAUSE-009 for what this does to pause cards.
+**Expect:** calls ring as usual. Home chip "Check me", and when pause cards were agreed to the home screen adds "Pause cards stay off until Guardian screens your calls." (GM-PAUSE-009: without the role no call counts as unknown, so the cards don't arm).
 
 ### GM-SCRN-010 · Outgoing calls are untouched  `P0`
 **Expect:** calls the parent places (to anyone, including unknown numbers and 911 on the real phone's emergency dialer screen only, never actually placing it) are never blocked or delayed.
