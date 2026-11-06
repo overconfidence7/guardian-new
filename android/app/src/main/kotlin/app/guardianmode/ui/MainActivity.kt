@@ -1,6 +1,7 @@
 package app.guardianmode.ui
 
 import androidx.compose.ui.platform.LocalConfiguration
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
@@ -25,6 +26,7 @@ import app.guardianmode.core.ReminderSchedule
 import app.guardianmode.core.TileKind
 import app.guardianmode.core.Transparency
 import app.guardianmode.data.HelperInfo
+import app.guardianmode.protection.Capability
 import app.guardianmode.protection.GuardianService
 import app.guardianmode.ui.help.HelpActivity
 import app.guardianmode.ui.home.AllAppsScreen
@@ -54,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private val container get() = (application as GuardianApp).container
     private var destination by mutableStateOf(DEST_HOME)
     private var needsAttention by mutableStateOf(false)
+    private var missing by mutableStateOf(emptyList<Capability>())
     /** Where to go back to, and what to do, once the lock code is entered. */
     private var unlockReturn = DEST_HOME
     private var afterUnlock: (() -> Unit)? = null
@@ -72,7 +75,7 @@ class MainActivity : ComponentActivity() {
         destination = intent.getStringExtra(EXTRA_DESTINATION) ?: DEST_HOME
         // Home pressed while Guardian is already in front may not pause and resume it, so
         // re-check here too: a permission can be taken away without leaving the home screen.
-        if (container.store.current.onboardingDone) needsAttention = container.protection.needsAttention()
+        if (container.store.current.onboardingDone) refreshAttention()
         handlePauseRequest(intent)
     }
 
@@ -93,10 +96,47 @@ class MainActivity : ComponentActivity() {
             return
         }
         GuardianService.start(this)
-        needsAttention = container.protection.needsAttention()
+        refreshAttention()
         lifecycleScope.launch {
             container.protection.onUserActive()
             container.cloud.flushOutbox()
+        }
+    }
+
+    private fun refreshAttention() {
+        needsAttention = container.protection.needsAttention()
+        missing = container.protection.missingCapabilities()
+    }
+
+    private var askedFor: Capability? = null
+
+    /** Android's own prompt for a runtime permission. Once the parent has said no twice it no longer shows, so then the app's Settings page opens instead. */
+    private val askPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed ->
+        val asked = askedFor ?: return@registerForActivityResult
+        askedFor = null
+        val permission = container.capabilities.runtimePermission(asked)
+        if (!allowed && permission != null && !shouldShowRequestPermissionRationale(permission)) openSettings(asked)
+        refreshAttention()
+    }
+
+    private fun turnOn(c: Capability) {
+        val permission = container.capabilities.runtimePermission(c)
+        if (permission != null) {
+            askedFor = c
+            askPermission.launch(permission)
+        } else {
+            openSettings(c)
+        }
+    }
+
+    private fun openSettings(c: Capability) {
+        val intent = container.capabilities.settingsIntent(c) ?: container.capabilities.fallbackSettingsIntent(c)
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            runCatching { startActivity(container.capabilities.fallbackSettingsIntent(c)) }
+        } catch (_: SecurityException) {
+            runCatching { startActivity(container.capabilities.fallbackSettingsIntent(c)) }
         }
     }
 
@@ -172,6 +212,7 @@ class MainActivity : ComponentActivity() {
                         paired = state.pairing != null,
                         lockLevel = state.config.lock.level,
                         hasCode = state.lockCodeHash.isNotEmpty(),
+                        missing = missing,
                     ),
                     actions = transparencyActions,
                 )
@@ -250,6 +291,9 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onLockSettings() = withCode(LockedAction.LOCK_SETTINGS) { destination = DEST_LOCK }
+
+        // No code: turning a permission back on only restores what the parent already agreed to.
+        override fun onTurnOn(capability: Capability) = turnOn(capability)
 
         override fun onStopUsing() = withCode(LockedAction.STOP_USING) {
             lifecycleScope.launch {

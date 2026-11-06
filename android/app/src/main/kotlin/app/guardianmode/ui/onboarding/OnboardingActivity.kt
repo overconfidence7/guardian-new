@@ -1,10 +1,8 @@
 package app.guardianmode.ui.onboarding
 
-import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -256,13 +254,7 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun request(c: Capability) {
-        val runtime = when (c) {
-            Capability.PHONE_STATE -> Manifest.permission.READ_PHONE_STATE
-            Capability.CONTACTS -> Manifest.permission.READ_CONTACTS
-            Capability.CALL_PHONE -> Manifest.permission.CALL_PHONE
-            Capability.NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= 33) Manifest.permission.POST_NOTIFICATIONS else null
-            else -> null
-        }
+        val runtime = container.capabilities.runtimePermission(c)
         if (runtime != null) {
             permissionLauncher.launch(arrayOf(runtime))
             return

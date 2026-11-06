@@ -30,6 +30,7 @@ import app.guardianmode.data.ChangeItem
 import app.guardianmode.data.DefaultConfig
 import app.guardianmode.data.HelperInfo
 import app.guardianmode.data.LocalState
+import app.guardianmode.protection.Capability
 import app.guardianmode.ui.theme.GuardianTheme
 import app.guardianmode.ui.transparency.EventText
 import app.guardianmode.ui.transparency.TransparencyActions
@@ -62,6 +63,7 @@ class TransparencyScreenTest {
         override fun onStopUsing() { calls += "stop" }
         override fun onBack() { calls += "back" }
         override fun onLockSettings() { calls += "lock" }
+        override fun onTurnOn(capability: Capability) { calls += "turnOn:${capability.key}" }
     }
 
     private fun ui(state: LocalState = Fixtures.state, paused: Boolean = false, pausedUntil: String? = null, level: LockLevel = LockLevel.GUIDED, hasCode: Boolean = true) =
@@ -280,5 +282,21 @@ class TransparencyScreenTest {
             generateSequence(node) { it.parent }.none { p -> p.config.contains(SemanticsProperties.VerticalScrollAxisRange) }
         }).performClick()
         assertThat(calls).containsExactly("remove:Sarah")
+    }
+
+    @Test fun gm_cons_016_whatsMissingIsListedWithATurnOn() {
+        show(ui().copy(missing = listOf(Capability.USAGE_ACCESS, Capability.CONTACTS)))
+        rule.onNodeWithText("Needs to be turned back on").assertExists()
+        rule.onNodeWithText(Capability.USAGE_ACCESS.plainName).assertExists()
+        rule.onNodeWithText(Capability.CONTACTS.plainName).assertExists()
+        rule.onAllNodesWithText("Turn on").assertCountEquals(2)
+        rule.onAllNodesWithText("Turn on")[1].performScrollTo().performClick()
+        assertThat(calls).containsExactly("turnOn:contacts")
+    }
+
+    @Test fun gm_cons_016_nothingMissingShowsNoTurnOn() {
+        show(ui())
+        rule.onNodeWithText("Needs to be turned back on").assertDoesNotExist()
+        rule.onAllNodesWithText("Turn on").assertCountEquals(0)
     }
 }
