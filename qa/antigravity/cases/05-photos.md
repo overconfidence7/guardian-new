@@ -20,6 +20,7 @@ Put test images on the emulator first: `adb push <file> /sdcard/Pictures/` then 
 ### GM-PHOTO-004 · Share several  `P1`
 **Steps:** select 5 pictures, Share, "Add to photo card".
 **Expect:** "The 5 pictures are on your home screen now." All five show.
+**In the cloud:** `PhotoDeviceTest.gm_photo_004_shareSeveral` (API 29, 33, 36): five pictures of different colours shared at once (`ACTION_SEND_MULTIPLE` with MediaStore URIs and a read grant, as a gallery sends a selection) while Notes is in front. The page says "The 5 pictures are on your home screen now.", all five are saved once each, newest first, and "Family photos" shows each one, found by its colour on screen while scrolling.
 
 ### GM-PHOTO-005 · Pictures are resized and kept privately  `P1`
 **Steps:** share the 4000x3000 JPEG. `adb shell run-as app.guardianmode.debug ls -l files/photos`, pull one file (copy to /data/local/tmp first, as in RUNBOOK §7) and check its size.

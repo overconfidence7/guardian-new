@@ -1,5 +1,12 @@
 {
   "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
+  "CONS-REVISIT": {
+    "title": "\"What my family can see\" offers no way to turn a missing permission back on, though docs/POLICY.md says every consent screen is reachable from it (GM-CONS-016)",
+    "owner": "unassigned",
+    "tests": [
+      "gm_cons_016_missingPermissionCanBeFixedFromWhatMyFamilyCanSee"
+    ]
+  },
   "HOME-MEMORY": {
     "title": "Home screen uses 170-210 MB (PSS) against the 150 MB budget in GM-PERF-007",
     "owner": "unassigned",

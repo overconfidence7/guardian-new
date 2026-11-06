@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -139,7 +140,8 @@ private fun Callout(text: String, color: Color) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.6f))
+            // A light wash on the light card; on the dark card a white one would put light text on light grey (GM-A11Y-004).
+            .background(if (color.luminance() > 0.5f) color.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.6f))
             .padding(18.dp),
     ) {
         Text(text, style = MaterialTheme.typography.titleMedium, color = color, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())

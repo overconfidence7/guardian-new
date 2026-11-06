@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import app.guardianmode.support.DeviceFixtures
 import app.guardianmode.support.DeviceRule
+import app.guardianmode.support.KnownBug
 import app.guardianmode.support.StubApp
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
@@ -120,6 +121,29 @@ class HomeDeviceTest {
 
         rule.tapDesc("Paused. What my family can see.")
         assertThat(rule.waitText("What my family can see")).isTrue()
+    }
+
+    /**
+     * GM-CONS-016: Usage access is taken away after setup. The chip says "Check me" and opens
+     * "What my family can see", and docs/POLICY.md ("Prominent disclosure") says every consent
+     * screen is reachable again from there, so the page must offer a way to turn the missing
+     * part back on: a "Turn on" that takes the parent to Android's Usage access page. The page
+     * has no such thing yet (CONS-REVISIT); what it does show is logged.
+     */
+    @KnownBug("CONS-REVISIT")
+    @Test fun gm_cons_016_missingPermissionCanBeFixedFromWhatMyFamilyCanSee() {
+        rule.shell("appops set ${rule.pkg} GET_USAGE_STATS deny")
+        rule.goHome()
+        assertChip("Check me")
+        rule.tapDesc("Check me. What my family can see.")
+        assertThat(rule.waitText("What my family can see")).isTrue()
+        Log.i(TAG, "GM-CONS-016 What my family can see with Usage access off: ${rule.screenSummary().take(1500)}")
+        assertWithMessage("a \"Turn on\" for what's missing on What my family can see").that(rule.scrollTo(By.text("Turn on"))).isTrue()
+        rule.tap("Turn on")
+        assertWithMessage("\"Turn on\" opens Android's Usage access page").that(rule.waitForPackage("com.android.settings")).isTrue()
+        rule.shell("appops set ${rule.pkg} GET_USAGE_STATS allow")
+        rule.goHome()
+        assertChip("Protected")
     }
 
     @Test fun gm_home_009_homeButtonAlwaysLandsOnTheMainScreen() {
