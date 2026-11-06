@@ -75,9 +75,11 @@ fun LockLevelPicker(selected: LockLevel, onSelect: (LockLevel) -> Unit) {
                     modifier = Modifier.size(32.dp),
                 )
                 Spacer(Modifier.width(14.dp))
+                // The chosen level sits on primaryContainer, so its words take that container's ink (GM-A11Y-004).
+                val ink = if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(lockLevelName(level), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                    Text(lockLevelDescription(level), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(lockLevelName(level), style = MaterialTheme.typography.titleLarge, color = ink)
+                    Text(lockLevelDescription(level), style = MaterialTheme.typography.bodyMedium, color = ink)
                 }
             }
         }

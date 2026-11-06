@@ -157,6 +157,62 @@ class PhotoDeviceTest {
         }
     }
 
+    /**
+     * GM-PHOTO-004: five pictures shared at once (ACTION_SEND_MULTIPLE, as a gallery sends a
+     * selection) from another app. The page counts them, all five are saved newest first, and
+     * "Family photos" shows each one (found by its colour on screen while scrolling).
+     */
+    @Test fun gm_photo_004_shareSeveral() {
+        rule.requireStub(StubApp.NOTES)
+        rule.goHome()
+        assertThat(rule.state.localPhotos).isEmpty()
+        val colors = listOf(Color.rgb(220, 40, 40), Color.rgb(40, 180, 60), Color.rgb(40, 80, 220), Color.rgb(230, 200, 30), Color.rgb(150, 50, 200))
+        val uris = colors.mapIndexed { i, c -> picture("gm-photo-004-$i", c) }
+
+        rule.open(StubApp.NOTES)
+        assertWithMessage("Notes opened").that(rule.waitForPackage(StubApp.NOTES.packageName)).isTrue()
+        rule.context.startActivity(
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("image/jpeg")
+                .setClassName(rule.pkg, "app.guardianmode.ui.home.SharePhotosActivity")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION),
+        )
+        assertThat(rule.waitText("Added to your photo card", 30_000)).isTrue()
+        assertWithMessage("the page counts five; on screen: ${rule.screenSummary().take(400)}")
+            .that(rule.has("The 5 pictures are on your home screen now.")).isTrue()
+        assertWithMessage("five saved").that(rule.waitUntil(10_000) { rule.state.localPhotos.size == 5 }).isTrue()
+        val photos = rule.state.localPhotos
+        assertWithMessage("newest first").that(photos.map { it.createdAt }).isInOrder(Comparator.reverseOrder<Long>())
+        val saved = photos.map { colorOf(it) }
+        assertWithMessage("each picture saved once: ${saved.map(::hex)}").that(colors.all { c -> saved.count { near(it, c) } == 1 }).isTrue()
+
+        // "Family photos" shows all five.
+        rule.tap("Go to my home screen")
+        assertWithMessage("home screen shows the photo card").that(rule.seen(photoCard, 10_000)).isTrue()
+        rule.scrollAndTap(By.desc("Photos"))
+        assertThat(rule.waitText("Family photos")).isTrue()
+        val shown = mutableSetOf<Int>()
+        repeat(8) {
+            if (shown.size == colors.size) return@repeat
+            rule.waitFor(photoCard, 5_000)
+            val shot = rule.instrumentation.uiAutomation.takeScreenshot()
+            val readable = if (shot.config == Bitmap.Config.HARDWARE) shot.copy(Bitmap.Config.ARGB_8888, false) else shot
+            for (o in rule.device.findObjects(photoCard)) {
+                val b = runCatching { o.visibleBounds }.getOrNull() ?: continue
+                // Down the middle of the item (the picture is its top part; it may be scrolled half out of view).
+                for (y in maxOf(b.top, 0) until minOf(b.bottom, readable.height) step 8) {
+                    val px = readable.getPixel(b.centerX(), y)
+                    colors.indexOfFirst { near(px, it) }.takeIf { it >= 0 }?.let { shown += it }
+                }
+            }
+            if (readable !== shot) readable.recycle()
+            shot.recycle()
+            rule.device.findObject(By.scrollable(true))?.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
+        }
+        assertWithMessage("pictures seen on Family photos: ${shown.map { hex(colors[it]) }}").that(shown).hasSize(colors.size)
+    }
+
     @Test fun gm_photo_002_addFromThePickerWithoutAPermission() {
         rule.goHome()
         rule.scrollAndTap(By.desc("Photos"))

@@ -33,7 +33,12 @@ data class GuardianColors(
     val muted: Color,
     val tileSurface: Color,
     val outline: Color,
+    /** Backgrounds for initials on a person's avatar, all with white text at large-text contrast or better. */
+    val avatars: List<Color> = AvatarPalette,
 )
+
+/** Coral is a shade darker than the accent so white initials on it reach 3:1 (GM-A11Y-004). */
+private val AvatarPalette = listOf(Color(0xFF1F5E57), Color(0xFFD0694E), Color(0xFF6A5ACD), Color(0xFF3D7EA6), Color(0xFFB5838D), Color(0xFF7A9E3B))
 
 @Immutable
 data class GuardianDimens(
@@ -137,6 +142,8 @@ private val HighContrastGuardian = GuardianColors(
     muted = Color(0xFF222222),
     tileSurface = Color.White,
     outline = Color.Black,
+    // Deep shades, so white initials reach 7:1.
+    avatars = listOf(Color(0xFF00332D), Color(0xFF7A1F00), Color(0xFF3B2A8C), Color(0xFF0B3F63), Color(0xFF5C2340), Color(0xFF2E4A0B)),
 )
 
 /**

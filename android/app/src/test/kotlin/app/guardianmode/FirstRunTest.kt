@@ -314,6 +314,60 @@ class FirstRunTest {
     }
 
     /**
+     * GM-CONS-015: on page 3 the parent presses Home, opens Settings and comes back; or Android
+     * rebuilds setup (low memory, or the launcher task rebuilt after Guardian became the home
+     * app). Setup picks up on the same page with every answer kept, and Home before setup is
+     * finished leads back into setup, never to the home screen.
+     */
+    @Test fun gm_cons_015_leavingSetupHalfWayAndComingBackResumesThePage() {
+        toConsent()
+        tap("Turn on"); tap("Skip for now") // page 1: yes
+        tap("Not now") // page 2: no
+        val page3 = ConsentPages.all[2]
+        shown(page3.title)
+        awaitConsent(Features.PAUSE, false)
+        val scenario = rule.activityRule.scenario
+
+        // Home, Settings, then back to Guardian: the same page.
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        rule.waitForIdle()
+        shown(page3.title)
+        shown("Turn on")
+
+        // Rebuilt from scratch: a new activity knows only what setup saved.
+        scenario.recreate()
+        rule.waitForIdle()
+        shown(page3.title)
+        shown("Step 3 of ${ConsentPages.all.size}")
+        shown("Turn on")
+        assertThat(rule.activity.isFinishing).isFalse()
+
+        // Earlier answers are still there.
+        systemBack()
+        shown(ConsentPages.all[1].title)
+        shown("Turn on")
+        systemBack()
+        shown(ConsentPages.all[0].title)
+        shown("Skip for now")
+        tap("Skip for now")
+        tap("Not now")
+        shown(page3.title)
+
+        // Home while Guardian is already the home app: straight back into setup.
+        assertThat(store.current.onboardingDone).isFalse()
+        androidx.test.core.app.ActivityScenario.launch(app.guardianmode.ui.MainActivity::class.java).use { home ->
+            home.onActivity {
+                val next = shadowOf(it).nextStartedActivity
+                assertWithMessage("Home before setup is finished opens").that(next?.component?.className).isEqualTo(OnboardingActivity::class.java.name)
+            }
+        }
+        shown(page3.title)
+        assertThat(store.current.onboardingDone).isFalse()
+        assertThat(store.current.consent).containsExactly(Features.HOME, true, Features.PAUSE, false)
+    }
+
+    /**
      * GM-PRIV-021: nothing is collected or sent until the parent has finished the consent pages.
      * Guardian collects through its service (which app is in front, the status report with the
      * app list for helpers), so the service must not start before "Go to my home screen", even

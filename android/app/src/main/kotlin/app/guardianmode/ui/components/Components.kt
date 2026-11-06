@@ -84,7 +84,7 @@ fun BigButton(
 @Composable
 fun Avatar(name: String, photoUrl: String?, size: Dp, modifier: Modifier = Modifier) {
     val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
-    val palette = listOf(Color(0xFF1F5E57), Color(0xFFE07A5F), Color(0xFF6A5ACD), Color(0xFF3D7EA6), Color(0xFFB5838D), Color(0xFF7A9E3B))
+    val palette = Guardian.colors.avatars
     val color = palette[(name.hashCode() and 0x7fffffff) % palette.size]
     Box(
         modifier = modifier.size(size).clip(CircleShape).background(color),
