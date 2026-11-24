@@ -36,6 +36,7 @@
 ### GM-SVC-009 · Doze and app standby  `P1`
 **Steps:** screen off, `adb shell dumpsys deviceidle force-idle`, then `adb emu gsm call 5559998888`, accept, talk 40 s, hang up. Unforce, unlock, open Chase.
 **Expect:** card. Also check that the battery exemption was granted (`dumpsys deviceidle whitelist` lists Guardian) and repeat with it removed: record the difference.
+**In the cloud:** `DeviceChecks.gm_svc_009_unknownCallDuringDoze` (host check, API 29 and 36) waits for the service, turns the screen off, forces Doze and checks `dumpsys deviceidle get deep` says IDLE, takes the standard unknown call, checks Guardian saved the call's end while still in Doze, then unforces, unlocks and opens Chase for the card. A failure names the step that broke; past the call it carries the safe-word card's fate, what each try saw and Guardian's own log lines. It runs with the battery exemption granted, as setup asks for it; the emulator is on charger and never suspends its CPU, so a missing wake lock can't show here.
 
 ### GM-SVC-010 · Low memory  `P1`
 **Steps:** on `gm-api29-budget`, open many heavy apps (Chrome with tabs, camera, maps if present), then do GM-PAUSE-001.

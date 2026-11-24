@@ -519,10 +519,14 @@ def standard_call(talk_seconds: int = 35) -> None:
     time.sleep(2)
 
 
-def dismiss_safe_word() -> None:
+def dismiss_safe_word() -> str:
+    """Taps "Everything's fine" on the safe-word card. Returns what happened, for a failure
+    message: a card that was never read can still be up behind the next app."""
     if wait_text("Everything's fine", 6):
         tap_text("Everything's fine")
         time.sleep(1)
+        return "tapped"
+    return f"not read in 6 s (card activity up: {card_activity_up()})"
 
 
 def open_app(package: str) -> None:
@@ -1350,17 +1354,48 @@ def killed_after_call(apk: str, **_) -> None:
     check(pause_card_after_open(), f"no pause card for Chase after Android killed Guardian's process post-call (call end before kill: {saved}; service back after {back:.0f} s: {after}; now: {diagnosis()})")
 
 
+def deep_idle_state() -> str:
+    """Doze's deep state (IDLE while dozing, ACTIVE when not), or what came back instead."""
+    return sh("dumpsys deviceidle get deep").strip() or "no answer"
+
+
 def doze_call(apk: str, **_) -> None:
-    """GM-SVC-009: an unknown call while the phone dozes still arms the tripwires."""
+    """GM-SVC-009: an unknown call while the phone dozes still arms the tripwires.
+
+    The 11-06 API 29 daily run failed this with only "no pause card", which couldn't tell a
+    call Guardian missed in Doze from a card that didn't come afterwards (it said nothing
+    else: the call's end had been saved, the service ran, Chase was in front). So each link
+    is checked on its own and fails saying which: Guardian running before the screen goes
+    off (API 29 takes 3.4-3.7 s to cold start, and fresh_app only waits 3 s), the phone really
+    in Doze, the call's end saved while still in Doze (what Doze could break: Guardian hearing
+    about the call at all), and then the card, with the safe-word card's fate, each try's
+    view of the screen, and Guardian's own log lines (card starts, blocked background starts,
+    deaths) in the message, since the job's logcat can't be read through the API."""
     fresh_app(apk)
+    check(wait_for(service_running, 30) is not None, f"the service never started after setup ({diagnosis()})")
+    broadcasts_idle()
     sh("input keyevent KEYCODE_SLEEP")
     time.sleep(2)
-    sh("dumpsys deviceidle force-idle")
-    standard_call()
-    sh("dumpsys deviceidle unforce")
+    forced = sh("dumpsys deviceidle force-idle").strip()
+    before = deep_idle_state()
+    check(before == "IDLE", f"the phone didn't go into Doze, so nothing here tests it (force-idle said {forced!r}; deep state {before})")
+    try:
+        standard_call()
+        saved_in = wait_for(lambda: saved_call_end().endswith(("ago", "paused")), 30)
+        saved = saved_call_end()
+        during = deep_idle_state()
+    finally:
+        sh("dumpsys deviceidle unforce")
+    check(saved_in is not None, f"Guardian never saved the end of an unknown call taken in Doze (30 s after hang-up, deep state {during}): {saved}; {diagnosis()}")
+    measurements["Doze: hang-up to call end saved"] = f"{saved_in:.0f} s (deep state then: {during})"
     wake()
-    dismiss_safe_word()
-    check(pause_card_after_open(), "no pause card after an unknown call taken in Doze")
+    safe_word = dismiss_safe_word()
+    if pause_card_after_open():
+        return
+    raise CheckFailed(
+        f"no pause card after an unknown call taken in Doze (call end saved {saved_in:.0f} s after hang-up, in deep state {during}; "
+        f"safe-word card: {safe_word}; {'; '.join(open_notes) or 'no tries noted'}; now: {diagnosis()}; Guardian's log: {guardian_log()})"
+    )
 
 
 def memory(apk: str, shrunk_apk: str | None = None, **_) -> None:
