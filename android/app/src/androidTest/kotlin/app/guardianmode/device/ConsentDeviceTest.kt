@@ -37,7 +37,7 @@ import java.util.regex.Pattern
  * The home role, Usage access and Display over other apps (GM-CONS-003, 005, 006) had tests here
  * too, and were taken out: on API 33 and 36 every test after the first in this class reached
  * setup resumed but with a window UiAutomator couldn't read ("Skipping null root node"), through
- * six ways of opening it (PR #21). They stay not automated until that is understood.
+ * six ways of opening it (PR #21). qa/daily/device_checks.py walks them from the host instead.
  *
  * Runtime permission dialogs (GM-CONS-004, the rest of GM-CONS-007, GM-CONS-009) can't be
  * tested here: revoking a runtime permission, or the exact-alarm access, kills the process the

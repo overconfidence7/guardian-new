@@ -295,8 +295,10 @@ if [ "$HOST" = "true" ]; then
   # answer, and an adb call without one (such as this logcat -c used to be) is the likeliest
   # reason the 10-31 API 29 run went on to the 3 h limit after the suite was stopped.
   timeout 30 adb logcat -c || true
+  host_known=()
+  [ "$KNOWN" = "true" ] && host_known=(--include-known-bugs)
   timeout 45m python3 "$ROOT/qa/daily/device_checks.py" --apk app/build/outputs/apk/debug/app-debug.apk \
-    --shrunk-apk app/build/outputs/apk/benchmark/app-benchmark.apk --out "$OUT/host" || status=1
+    --shrunk-apk app/build/outputs/apk/benchmark/app-benchmark.apk --out "$OUT/host" "${host_known[@]}" || status=1
   timeout 120 adb logcat -d -v time > "$OUT/logcat-host.txt" 2>/dev/null || true
 fi
 
