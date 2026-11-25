@@ -447,12 +447,29 @@ def ui_dump() -> str:
     return adb("exec-out", "cat", "/sdcard/gm-ui.xml", ok=False)
 
 
+def dump_nodes(xml: str) -> list[dict[str, str]]:
+    """Each node of a UI dump as its attributes, unescaped. An attribute is double-quoted, or
+    single-quoted when its value holds a double quote (Android's serializer does that: setup's
+    'Turn on "Allow display over other apps". Then press Back.' was invisible to a parser that
+    only read double quotes, on 11-25)."""
+    nodes = []
+    for m in re.finditer(r"<node\b[^>]*>", xml):
+        nodes.append({a.group(1): (a.group(2) if a.group(2) is not None else a.group(3) or "")
+                      .replace("&apos;", "'").replace("&quot;", '"').replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+                      for a in re.finditer(r'([\w:-]+)=(?:"([^"]*)"|\'([^\']*)\')', m.group(0))})
+    return nodes
+
+
+def node_bounds(node: dict[str, str]) -> tuple[int, int, int, int] | None:
+    b = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+    return tuple(map(int, b.groups())) if b else None  # type: ignore[return-value]
+
+
 def find_text(text: str) -> tuple[int, int] | None:
-    xml = ui_dump()
-    for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
-        if m.group(1).replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&") == text:
-            x1, y1, x2, y2 = map(int, m.group(2, 3, 4, 5))
-            return (x1 + x2) // 2, (y1 + y2) // 2
+    for node in dump_nodes(ui_dump()):
+        b = node_bounds(node)
+        if node.get("text") == text and b:
+            return (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
     return None
 
 
@@ -469,10 +486,10 @@ def tap_text(text: str) -> bool:
 
 def find_desc(prefix: str) -> tuple[int, int, int, int] | None:
     """Bounds of the first node whose content-desc starts with [prefix]."""
-    xml = ui_dump()
-    for m in re.finditer(r'<node [^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
-        if m.group(1).replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&").startswith(prefix):
-            return tuple(map(int, m.group(2, 3, 4, 5)))  # type: ignore[return-value]
+    for node in dump_nodes(ui_dump()):
+        b = node_bounds(node)
+        if node.get("content-desc", "").startswith(prefix) and b:
+            return b
     return None
 
 
@@ -843,15 +860,11 @@ def home_before_setup(apk: str, **_) -> None:
 def ui_nodes() -> list[dict[str, str]]:
     """Every node of a UI dump, with its text (or description), resource id, package and center."""
     nodes = []
-    for m in re.finditer(r"<node [^>]*>", ui_dump()):
-        def attr(name: str, node: str = m.group(0)) -> str:
-            a = re.search(rf'\b{name}="([^"]*)"', node)
-            return (a.group(1) if a else "").replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&")
-        b = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", attr("bounds"))
-        x1, y1, x2, y2 = map(int, b.groups()) if b else (0, 0, 0, 0)
-        nodes.append({"text": attr("text") or attr("content-desc"), "res": attr("resource-id"), "pkg": attr("package"),
-                      "x": str((x1 + x2) // 2), "y": str((y1 + y2) // 2),
-                      "checkable": attr("checkable"), "checked": attr("checked")})
+    for node in dump_nodes(ui_dump()):
+        x1, y1, x2, y2 = node_bounds(node) or (0, 0, 0, 0)
+        nodes.append({"text": node.get("text") or node.get("content-desc", ""), "res": node.get("resource-id", ""),
+                      "pkg": node.get("package", ""), "x": str((x1 + x2) // 2), "y": str((y1 + y2) // 2),
+                      "checkable": node.get("checkable", ""), "checked": node.get("checked", "")})
     return nodes
 
 
@@ -1101,9 +1114,6 @@ def next_instruction() -> str:
                 between = " ".join(texts[texts.index("On the next screen") + 1:at])
                 if between:
                     return between
-                xml = ui_dump()
-                label = xml.find("On the next screen")
-                return f"(no instruction found; the dump around its label: {xml[max(0, label - 100):label + 700]})"
         if i < 3:
             sh("input swipe 540 1700 540 900 300")
             time.sleep(1)
