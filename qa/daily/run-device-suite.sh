@@ -15,15 +15,46 @@ for pkg in com.anydesk.anydeskandroid com.teamviewer.quicksupport.market com.car
 done
 # Stand-ins: the ordinary watched apps are installed up front; the remote-control ones and
 # Screen Helper are only pushed, so tests can install them and trip the alarm themselves.
-adb shell mkdir -p /data/local/tmp/stubs
-for apk in "$STUBS"/*/debug/*.apk; do
-  flavor="$(basename "$(dirname "$(dirname "$apk")")")"
-  adb push "$apk" "/data/local/tmp/stubs/$flavor.apk" >/dev/null
-  case "$flavor" in
-    anydesk|teamviewer|rustdesk|screenhelper) ;;
-    *) adb install -r "$apk" >/dev/null || echo "::warning::couldn't install stand-in $flavor" ;;
-  esac
-done
+install_stubs() {
+  adb shell mkdir -p /data/local/tmp/stubs
+  for apk in "$STUBS"/*/debug/*.apk; do
+    flavor="$(basename "$(dirname "$(dirname "$apk")")")"
+    adb push "$apk" "/data/local/tmp/stubs/$flavor.apk" >/dev/null
+    case "$flavor" in
+      anydesk|teamviewer|rustdesk|screenhelper) ;;
+      *) adb install -r "$apk" >/dev/null || echo "::warning::couldn't install stand-in $flavor" ;;
+    esac
+  done
+}
+install_stubs
+
+# The emulator answers and so does Android's package service: on 11-04 (API 29, twice) the
+# package service died during a stand-in's `pm install` while `adb shell true` still worked.
+healthy() { timeout 30 adb shell pm path android 2>/dev/null | grep -q '^package:'; }
+# Restarts Android when its package service is gone (a reboot restarts system_server; the
+# cold start in device_checks.py --bring-back only helps when adb itself doesn't answer).
+revive() {
+  timeout 30 adb reboot >/dev/null 2>&1 || python3 "$ROOT/qa/daily/device_checks.py" --bring-back || return 1
+  timeout 300 adb wait-for-device >/dev/null 2>&1 || return 1
+  for _ in $(seq 1 60); do
+    [ "$(timeout 20 adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] && healthy && break
+    sleep 5
+  done
+  healthy || return 1
+  timeout 20 adb shell input keyevent 82 >/dev/null 2>&1 || true
+}
+# On 11-24 (daily run 45471112196, API 29) the package service was already gone when Gradle
+# tried to install the app ("Can't find service: package"). Gradle still said BUILD
+# SUCCESSFUL, no test ran, and the job passed. So check before the suite, and restart once.
+if ! healthy; then
+  if revive; then
+    echo "::warning title=$(basename "$OUT") emulator::Android's package service wasn't answering after the stand-ins were installed; restarted Android before the suite"
+    install_stubs
+  else
+    echo "::error title=$(basename "$OUT") emulator::Android's package service wasn't answering before the suite and didn't come back after a restart"
+    status=1
+  fi
+fi
 
 # Tests read the call log through the shell's `content query` (DeviceRule.callLogQuery). Android
 # 10's shell doesn't request READ_CALL_LOG, so there DeviceRule reads it as root (su). The
@@ -37,6 +68,10 @@ case "$probe" in
     ;;
 esac
 
+# system_server's own crash and watchdog lines, kept apart from the test tags, so a lost
+# emulator says what Android itself saw (its full log can't be dumped once it stops answering).
+# (Defined before the first stream below: it used to come later, so that stream ran `-s` with no tags and kept nothing.)
+SYSTEM_TAGS=(AndroidRuntime:E Watchdog:W PackageManager:E ActivityManager:E libc:F DEBUG:F)
 # A bigger log buffer, so the end-of-run logcat still holds the early tests' traces.
 adb logcat -G 32M >/dev/null 2>&1 || true
 adb logcat -c >/dev/null 2>&1 || true
@@ -72,12 +107,6 @@ POLL=${POLL:-30}
 last_events() { grep -E 'TestRunner.*(started|finished):' "$OUT/logcat-diag.txt" 2>/dev/null | tail -2 | tr '\n' ' ' | cut -c1-600; }
 last_lines() { tail -n 4 "$OUT/logcat-diag.txt" 2>/dev/null | cut -c1-300 | tr '\n' ' '; }
 answers() { timeout 20 adb shell true >/dev/null 2>&1; }
-# The emulator answers and so does Android's package service: on 11-04 (API 29, twice) the
-# package service died during a stand-in's `pm install` while `adb shell true` still worked.
-healthy() { timeout 30 adb shell pm path android 2>/dev/null | grep -q '^package:'; }
-# system_server's own crash and watchdog lines, kept apart from the test tags, so a lost
-# emulator says what Android itself saw (its full log can't be dumped once it stops answering).
-SYSTEM_TAGS=(AndroidRuntime:E Watchdog:W PackageManager:E ActivityManager:E libc:F DEBUG:F)
 
 # Runs connectedDebugAndroidTest with "$@" added to args, under the watchdog above. Sets rc
 # (124 when the watchdog stopped it) and stopped (why, or empty). Gradle's output also goes to
@@ -152,6 +181,32 @@ timeout 120 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null |
 kill "$diag_pid" "$system_pid" 2>/dev/null || true
 mkdir -p "$OUT/instrumented"
 cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented/" 2>/dev/null || true
+
+# A run in which no test started is a failure, whatever Gradle said (see 11-24 above): say
+# what Gradle saw, restart Android if it needs it, and run the whole suite once more.
+ran_tests() { grep -qE 'TestRunner.*started:' "$OUT/logcat-diag.txt" 2>/dev/null; }
+if [ -z "$stopped" ] && ! ran_tests; then
+  saw="$(grep -E "Can't find service|Broken pipe|Failed to install|device offline|not found|Instrumentation run failed|AndroidTestRunner failed" "$OUT/gradle-instrumented.txt" 2>/dev/null | head -3 | cut -c1-200 | tr '\n' ' ')"
+  echo "::error title=$(basename "$OUT") instrumented::no instrumented test ran (Gradle exited $rc and said: ${saw:-nothing about it}). Running the suite again"
+  status=1
+  if healthy || revive; then
+    timeout 30 adb logcat -c >/dev/null 2>&1 || true
+    adb logcat -v time -s TestRunner:I GuardianTrace:I GuardianDiag:I UiDump:I DeviceRule:W ScamScenario:I >> "$OUT/logcat-diag.txt" 2>/dev/null &
+    diag_pid=$!
+    adb logcat -v time -b main,system,crash -s "${SYSTEM_TAGS[@]}" >> "$OUT/logcat-system.txt" 2>/dev/null &
+    system_pid=$!
+    rest=$((SUITE_LIMIT - ($(date +%s) - suite_start)))
+    [ "$rest" -gt 900 ] || rest=900
+    run_suite instrumented "$rest"
+    timeout 120 adb logcat -d -v time > "$OUT/logcat-instrumented.txt" 2>/dev/null || true
+    kill "$diag_pid" "$system_pid" 2>/dev/null || true
+    rm -rf "$OUT/instrumented"; mkdir -p "$OUT/instrumented"
+    cp -r app/build/outputs/androidTest-results/connected/. "$OUT/instrumented/" 2>/dev/null || true
+    ran_tests || echo "::error title=$(basename "$OUT") instrumented::the second try ran no instrumented test either"
+  else
+    echo "::error title=$(basename "$OUT") instrumented::Android's package service didn't come back after a restart, so the instrumented suite didn't run"
+  fi
+fi
 
 # A suite that ended in the middle of a test (the emulator died or stopped answering: on 11-04's
 # API 29 run Android's package service broke 6 s into gm_scam_006 and Gradle ended at once, with
