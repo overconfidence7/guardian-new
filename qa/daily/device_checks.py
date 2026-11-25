@@ -447,12 +447,29 @@ def ui_dump() -> str:
     return adb("exec-out", "cat", "/sdcard/gm-ui.xml", ok=False)
 
 
+def dump_nodes(xml: str) -> list[dict[str, str]]:
+    """Each node of a UI dump as its attributes, unescaped. An attribute is double-quoted, or
+    single-quoted when its value holds a double quote (Android's serializer does that: setup's
+    'Turn on "Allow display over other apps". Then press Back.' was invisible to a parser that
+    only read double quotes, on 11-25)."""
+    nodes = []
+    for m in re.finditer(r"<node\b[^>]*>", xml):
+        nodes.append({a.group(1): (a.group(2) if a.group(2) is not None else a.group(3) or "")
+                      .replace("&apos;", "'").replace("&quot;", '"').replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+                      for a in re.finditer(r'([\w:-]+)=(?:"([^"]*)"|\'([^\']*)\')', m.group(0))})
+    return nodes
+
+
+def node_bounds(node: dict[str, str]) -> tuple[int, int, int, int] | None:
+    b = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+    return tuple(map(int, b.groups())) if b else None  # type: ignore[return-value]
+
+
 def find_text(text: str) -> tuple[int, int] | None:
-    xml = ui_dump()
-    for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
-        if m.group(1).replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&") == text:
-            x1, y1, x2, y2 = map(int, m.group(2, 3, 4, 5))
-            return (x1 + x2) // 2, (y1 + y2) // 2
+    for node in dump_nodes(ui_dump()):
+        b = node_bounds(node)
+        if node.get("text") == text and b:
+            return (b[0] + b[2]) // 2, (b[1] + b[3]) // 2
     return None
 
 
@@ -469,10 +486,10 @@ def tap_text(text: str) -> bool:
 
 def find_desc(prefix: str) -> tuple[int, int, int, int] | None:
     """Bounds of the first node whose content-desc starts with [prefix]."""
-    xml = ui_dump()
-    for m in re.finditer(r'<node [^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
-        if m.group(1).replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&").startswith(prefix):
-            return tuple(map(int, m.group(2, 3, 4, 5)))  # type: ignore[return-value]
+    for node in dump_nodes(ui_dump()):
+        b = node_bounds(node)
+        if node.get("content-desc", "").startswith(prefix) and b:
+            return b
     return None
 
 
@@ -843,14 +860,11 @@ def home_before_setup(apk: str, **_) -> None:
 def ui_nodes() -> list[dict[str, str]]:
     """Every node of a UI dump, with its text (or description), resource id, package and center."""
     nodes = []
-    for m in re.finditer(r"<node [^>]*>", ui_dump()):
-        def attr(name: str, node: str = m.group(0)) -> str:
-            a = re.search(rf'\b{name}="([^"]*)"', node)
-            return (a.group(1) if a else "").replace("&apos;", "'").replace("&quot;", '"').replace("&amp;", "&")
-        b = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", attr("bounds"))
-        x1, y1, x2, y2 = map(int, b.groups()) if b else (0, 0, 0, 0)
-        nodes.append({"text": attr("text") or attr("content-desc"), "res": attr("resource-id"), "pkg": attr("package"),
-                      "x": str((x1 + x2) // 2), "y": str((y1 + y2) // 2)})
+    for node in dump_nodes(ui_dump()):
+        x1, y1, x2, y2 = node_bounds(node) or (0, 0, 0, 0)
+        nodes.append({"text": node.get("text") or node.get("content-desc", ""), "res": node.get("resource-id", ""),
+                      "pkg": node.get("package", ""), "x": str((x1 + x2) // 2), "y": str((y1 + y2) // 2),
+                      "checkable": node.get("checkable", ""), "checked": node.get("checked", "")})
     return nodes
 
 
@@ -939,6 +953,23 @@ def answer_android_screens(page: str, ops: list[str]) -> list[str]:
     return shown
 
 
+def install_into_setup(apk: str, before: list[str]) -> None:
+    """A plain install (no -g: every runtime permission still to be asked), the shell commands
+    in [before] (roles and access granted ahead), then Guardian opened and walked to the first
+    consent page ("Step 1 of 6")."""
+    sh(f"pm uninstall {PKG}")
+    adb("install", "-r", apk, timeout=300)
+    for c in before:
+        sh(c)
+    wake()
+    open_app(PKG)
+    check(wait_text("How will this phone be used?", 20), f"Guardian didn't open on the role choice ({top_activity()})")
+    # A tap right after a cold start can be lost (on 11-03's API 29 run the role choice stayed
+    # after one), so each step is tapped again until the next screen shows.
+    check(tap_until("Make this phone simpler", "Make your phone easier to use.", "How will this phone be used?"), f"Welcome didn't follow: {screen_words(PKG)}")
+    check(tap_until("Set up on my own for now", "Step 1 of 6", "Make your phone easier to use."), f"page 1 didn't follow: {screen_words(PKG)}")
+
+
 def consent_android_screens(apk: str, **_) -> None:
     """GM-CONS-004, GM-CONS-007 and GM-CONS-009: setup's runtime permission dialogs, walked
     from a plain install (nothing granted) with real taps on Android's Allow. Roles and
@@ -947,25 +978,13 @@ def consent_android_screens(apk: str, **_) -> None:
     the process the tests run in). Exact alarms and full-screen notifications are taken away
     here for the same reason. What Android showed on each page goes to the measurements."""
     level = sdk()
-    sh(f"pm uninstall {PKG}")
-    adb("install", "-r", apk, timeout=300)  # no -g: every runtime permission still to be asked
-    for c in [
+    reminder_ops = (["SCHEDULE_EXACT_ALARM"] if level >= 31 else []) + (["USE_FULL_SCREEN_INTENT"] if level >= 34 else [])
+    install_into_setup(apk, [
         f"cmd role add-role-holder android.app.role.HOME {PKG}",
         f"cmd role add-role-holder android.app.role.CALL_SCREENING {PKG}",
         f"appops set {PKG} GET_USAGE_STATS allow",
         f"appops set {PKG} SYSTEM_ALERT_WINDOW allow",
-    ]:
-        sh(c)
-    reminder_ops = (["SCHEDULE_EXACT_ALARM"] if level >= 31 else []) + (["USE_FULL_SCREEN_INTENT"] if level >= 34 else [])
-    for op in reminder_ops:
-        sh(f"appops set {PKG} {op} deny")
-    wake()
-    open_app(PKG)
-    check(wait_text("How will this phone be used?", 20), f"Guardian didn't open on the role choice ({top_activity()})")
-    # A tap right after a cold start can be lost (on 11-03's API 29 run the role choice stayed
-    # after one), so each step is tapped again until the next screen shows.
-    check(tap_until("Make this phone simpler", "Make your phone easier to use.", "How will this phone be used?"), f"Welcome didn't follow: {screen_words(PKG)}")
-    check(tap_until("Set up on my own for now", "Step 1 of 6", "Make your phone easier to use."), f"page 1 didn't follow: {screen_words(PKG)}")
+    ] + [f"appops set {PKG} {op} deny" for op in reminder_ops])
 
     # GM-CONS-004: page 1 asks only for Phone calls (the home role is held).
     shown = answer_android_screens("Step 1 of 6", [])
@@ -1010,6 +1029,306 @@ def consent_android_screens(apk: str, **_) -> None:
           f"expected a Settings screen for each of {reminder_ops} on API {level}; Android showed {shown}")
     check(all("Guardian Mode" in s for s in settings), f"a Settings screen wasn't Guardian's own: {settings}")
     check(len(shown) == len(dialogs) + len(settings), f"page 5 opened something unexpected: {shown}")
+    sh("input keyevent KEYCODE_HOME")
+
+
+# GM-CONS-003, 005 and 006: the home role and the two special-access switches, walked from
+# the host. ConsentDeviceTest had them on the device, but there UiAutomator read setup's
+# windows as empty after the first test in the class; a host-side UI dump reads them.
+
+SETTINGS = "com.android.settings"
+# The one Guardian checklist line each of these screens turns on.
+HOME_LINE = "Guardian is the home screen"
+USAGE_LINE = "Can tell which app is open"
+OVERLAY_LINE = "Can show pause cards over other apps"
+# ConsentPages.instruction(HOME_APP). Turn on opens the home role request straight away, so
+# the parent only sees it when they come back to page 1 without having picked Guardian.
+HOME_INSTRUCTION = 'Choose Guardian Mode, then tap "Set as default".'
+
+
+def settings_nodes() -> list[dict[str, str]]:
+    return [n for n in ui_nodes() if n["pkg"] == SETTINGS]
+
+
+def node_words(nodes: list[dict[str, str]]) -> str:
+    return " | ".join(dict.fromkeys(n["text"] for n in nodes if n["text"]))[:500]
+
+
+def settled_settings() -> list[dict[str, str]]:
+    """Settings' window once it has drawn: two dumps in a row that say the same thing (the
+    API 36 pages are Compose and fill in their app list after the first frame)."""
+    last: list[dict[str, str]] = []
+    for _ in range(10):
+        nodes = settings_nodes()
+        if nodes and any(n["text"] for n in nodes) and node_words(nodes) == node_words(last):
+            return nodes
+        last = nodes
+        time.sleep(1)
+    return last
+
+
+def own_switch_page(nodes: list[dict[str, str]]) -> bool:
+    """Settings shows Guardian's own page: its name and a single switch. A list of apps names
+    Guardian in a row with no switch of its own (each row says Allowed or Not allowed)."""
+    return any(n["text"] == "Guardian Mode" for n in nodes) and sum(n["checkable"] == "true" for n in nodes) == 1
+
+
+def op_allowed(op: str) -> bool:
+    return re.search(rf"\b{op}: allow", sh(f"appops get {PKG} {op}")) is not None
+
+
+def checklist_mark(line: str) -> str:
+    """The mark beside [line] in a consent page's checklist, as its icon's description says
+    ("Done" or "Not yet"); "missing" when the line isn't on the page, even after scrolling."""
+    for i in range(3):
+        nodes = [n for n in ui_nodes() if n["pkg"] == PKG]
+        row = next((n for n in nodes if n["text"] == line), None)
+        if row:
+            marks = [n for n in nodes if n["text"] in ("Done", "Not yet")]
+            near = min(marks, key=lambda n: abs(int(n["y"]) - int(row["y"])), default=None)
+            return near["text"] if near and abs(int(near["y"]) - int(row["y"])) < 80 else "no mark"
+        if i < 2:
+            sh("input swipe 540 1700 540 900 300")
+            time.sleep(1)
+    return "missing"
+
+
+def ticked(line: str) -> bool:
+    """[line] is ticked: its mark says Done, or every line is done and the page says All set."""
+    return find_text("All set") is not None or checklist_mark(line) == "Done"
+
+
+def next_instruction() -> str:
+    """Guardian's "On the next screen" instruction on the current consent page, or "" with
+    what the page showed. It sits right above Continue, so the page is scrolled until Continue
+    shows and the line before it is read (reading the line after the label came back empty on
+    API 29 and 36 on 11-25, with the label the last line on screen)."""
+    texts: list[str] = []
+    for i in range(4):
+        texts = [n["text"] for n in ui_nodes() if n["pkg"] == PKG and n["text"]]
+        if "Continue" in texts:
+            at = texts.index("Continue")
+            if at >= 2 and texts[at - 2] == "On the next screen":
+                return texts[at - 1]
+            if "On the next screen" in texts[:at]:
+                between = " ".join(texts[texts.index("On the next screen") + 1:at])
+                if between:
+                    return between
+        if i < 3:
+            sh("input swipe 540 1700 540 900 300")
+            time.sleep(1)
+    return f"(no instruction found; the page showed: {' | '.join(texts)[-400:]})"
+
+
+def tap_to_leave_setup(text: str, page: str) -> str:
+    """Taps [text] on consent page [page] until Guardian is no longer in front (a tap right
+    after a page change can be lost). Returns the activity that came up. Whether setup is still
+    in front is read from the activity: the page's step line and title scroll off the top on
+    the way down to the button."""
+    for _ in range(3):
+        if top_activity().startswith(PKG + "/"):
+            tap_text_scrolling(text, swipes=2)
+        if wait_for(lambda: not top_activity().startswith(PKG + "/"), 10, interval=0.5) is not None:
+            time.sleep(1)
+            return top_activity()
+    check(False, f"\"{text}\" on \"{page}\" didn't open anything ({top_activity()}): {screen_words(PKG)}")
+    return ""
+
+
+def back_to_setup() -> int:
+    """Presses Back until Guardian's setup is in front again; returns how many presses it took."""
+    for presses in range(1, 4):
+        sh("input keyevent KEYCODE_BACK")
+        if wait_for(lambda: top_activity().startswith(PKG + "/"), 6, interval=0.5) is not None:
+            return presses
+    check(False, f"Back three times didn't return to setup ({top_activity()}): {screen_words(SETTINGS)}")
+    return 0
+
+
+def turn_on_in_settings(op: str, what: str) -> dict:
+    """A parent on Settings' [what] screen turning Guardian on with real taps: when Settings
+    opened on the full app list, Guardian Mode in it (scrolling to find it), then the switch;
+    then Back to setup. Returns what Settings showed first, whether that was Guardian's own
+    switch, what the switch page said, and how many taps and Back presses it took."""
+    seen: dict = {"activity": top_activity().split("/")[-1]}
+    nodes = settled_settings()
+    seen["first"] = node_words(nodes)
+    seen["own"] = own_switch_page(nodes)
+    taps = 0
+    if not seen["own"]:
+        row = None
+        for _ in range(6):
+            row = next((n for n in nodes if n["text"] == "Guardian Mode"), None)
+            if row:
+                break
+            sh("input swipe 540 1600 540 800 300")
+            time.sleep(1)
+            nodes = settled_settings()
+        check(row is not None, f"{what} opened on a list without Guardian Mode in it ({seen['activity']}): {seen['first']}")
+        sh(f"input tap {row['x']} {row['y']}")
+        taps += 1
+        check(wait_for(lambda: own_switch_page(settings_nodes()), 10, interval=0.5) is not None,
+              f"tapping Guardian Mode in the {what} list didn't open its switch ({top_activity()}): {node_words(settings_nodes())}")
+        nodes = settled_settings()
+    seen["switch page"] = node_words(nodes)
+    switch = next(n for n in nodes if n["checkable"] == "true")
+    check(switch["checked"] != "true", f"Guardian's {what} switch was already on: {seen['switch page']}")
+    sh(f"input tap {switch['x']} {switch['y']}")
+    taps += 1
+    check(wait_for(lambda: op_allowed(op), 10) is not None,
+          f"tapping Guardian's {what} switch didn't allow {op} ({sh(f'appops get {PKG} {op}').strip()[:120]}): {node_words(settings_nodes())}")
+    seen["taps"] = taps
+    seen["backs"] = back_to_setup()
+    return seen
+
+
+def note(name: str, text: str) -> None:
+    """What a check found, as its own annotation (the summary annotation is cut at 3500 characters)."""
+    print(f"::notice title=device-host {name}::{text[:3500].replace('%', '%25').replace(chr(10), '%0A')}")
+
+
+def home_role_in_setup(apk: str, **_) -> None:
+    """GM-CONS-003: page 1's Turn on, from a plain install that isn't the home app, shows
+    Android's request for the home role (or, where a phone has no role request, Settings'
+    default home app screen). A parent's taps as Guardian's instruction words them, "Choose
+    Guardian Mode, then tap "Set as default"", make Guardian the home app, and setup comes back
+    on page 1 with "Guardian is the home screen" ticked. What Android said, and whether it had
+    the instruction's "Set as default", go to the measurements."""
+    install_into_setup(apk, [f"cmd role add-role-holder android.app.role.CALL_SCREENING {PKG}"])
+    check(PKG not in home_holders(), f"Guardian is already the home app before page 1 asked ({home_holders()})")
+    instruction = HOME_INSTRUCTION
+    top = tap_to_leave_setup("Turn on", "Step 1 of 6")
+    found: list[str] = [f"opened {top.split('/')[-1]}"]
+    taps = 0
+    if "permissioncontroller" in top or top.startswith("android/"):
+        # The role request (Android 10+), or the platform's own home chooser.
+        part = "permissioncontroller" if "permissioncontroller" in top else "android"
+        wait_for(lambda: any(n["text"] for n in ui_nodes() if part in n["pkg"]), 10, interval=0.5)
+        time.sleep(1)
+        nodes = [n for n in ui_nodes() if part in n["pkg"]]
+        words = node_words(nodes)
+        found.append(f"said: {words}")
+        check("Guardian Mode" in words, f"Android's home screen request doesn't name Guardian Mode ({top}): {words}")
+        choice = next((n for n in nodes if n["text"] == "Guardian Mode"), None)
+        if choice:
+            sh(f"input tap {choice['x']} {choice['y']}")
+            taps += 1
+            time.sleep(1)
+            nodes = [n for n in ui_nodes() if part in n["pkg"]]
+        confirm = next((n for n in nodes if n["text"].strip().lower() in ("set as default", "always")), None)
+        found.append(f"Guardian Mode to choose: {'yes' if choice else 'no'}; button: {confirm['text'] if confirm else 'none'}")
+        check(confirm is not None and confirm["text"].strip().lower() == "set as default",
+              f"Android's home screen request has no \"Set as default\", which Guardian's instruction ({instruction!r}) "
+              f"tells the parent to tap ({top}): {words}")
+        sh(f"input tap {confirm['x']} {confirm['y']}")
+        taps += 1
+    elif top.startswith(SETTINGS + "/"):
+        # Settings' "Default home app" list (ACTION_HOME_SETTINGS), where no role request exists.
+        nodes = settled_settings()
+        found.append(f"said: {node_words(nodes)}")
+        choice = next((n for n in nodes if n["text"] == "Guardian Mode"), None)
+        check(choice is not None, f"Settings' home app screen doesn't list Guardian Mode ({top}): {node_words(nodes)}")
+        sh(f"input tap {choice['x']} {choice['y']}")
+        taps += 1
+        back_to_setup()
+    else:
+        check(False, f"page 1's Turn on opened neither Android's home role request nor Settings: {top} ({screen_words('')})")
+    holder = wait_for(lambda: PKG in home_holders(), 15)
+    # Whether the role brought Display over other apps with it (on API 36 page 2 found it allowed).
+    found.append(f"after the role, {sh(f'appops get {PKG} SYSTEM_ALERT_WINDOW').strip()[:80] or 'SYSTEM_ALERT_WINDOW: default'}")
+    back = wait_for(lambda: showing("Step 1 of 6"), 20, interval=1)
+    after = f"back on page 1: {back is not None} ({top_activity().split('/')[-1]})"
+    mark = checklist_mark(HOME_LINE) if back is not None else "not on page 1"
+    if back is not None and mark != "Done":
+        wait_for(lambda: checklist_mark(HOME_LINE) == "Done", 10)
+        mark = checklist_mark(HOME_LINE)
+    found += [f"{taps} taps", after, f"\"{HOME_LINE}\": {mark}"]
+    measurements["GM-CONS-003 home role"] = "; ".join(found)
+    note("gm_cons_003", "; ".join(found))
+    check(holder is not None, f"Guardian isn't the home app after the parent's taps ({home_holders()}); {'; '.join(found)}")
+    check(back is not None, f"setup didn't come back on page 1 after Guardian became the home app; {'; '.join(found)}: {screen_words(PKG)}")
+    check(mark == "Done", f"\"{HOME_LINE}\" isn't ticked back on page 1 ({mark}); {'; '.join(found)}")
+    sh("input keyevent KEYCODE_HOME")
+
+
+def to_pause_page(apk: str) -> None:
+    """A plain install walked to page 2 ("Pause before sending money"), which asks for Usage
+    access and then Display over other apps, as a parent who said "Not now" on page 1. Not
+    with the home role: on API 36 holding it already allowed Display over other apps, so page 2
+    never opened that screen (11-25 branch run)."""
+    install_into_setup(apk, [])
+    for op in ("GET_USAGE_STATS", "SYSTEM_ALERT_WINDOW"):
+        check(not op_allowed(op), f"{op} is allowed straight after a plain install: {sh(f'appops get {PKG} {op}').strip()[:120]}")
+    check(tap_until("Not now", "Step 2 of 6", "Step 1 of 6"), f"page 2 didn't follow: {screen_words(PKG)}")
+
+
+def usage_access_in_setup(apk: str, **_) -> None:
+    """GM-CONS-005: page 2's Turn on opens Settings on Usage access, straight on Guardian's own
+    switch (Guardian passes its package with the intent), not the full list of apps. Turning
+    it on and pressing Back comes back to page 2 with "Can tell which app is open" ticked. Which
+    screen opened and how many taps and Back presses it took go to the measurements."""
+    to_pause_page(apk)
+    top = tap_to_leave_setup("Turn on", "Step 2 of 6")
+    check(top.startswith(SETTINGS + "/"), f"page 2's Turn on didn't open Settings: {top} ({screen_words('')})")
+    seen = turn_on_in_settings("GET_USAGE_STATS", "Usage access")
+    back = wait_for(lambda: showing("Step 2 of 6"), 15, interval=1) is not None
+    mark = "not on page 2"
+    if back:
+        wait_for(lambda: checklist_mark(USAGE_LINE) == "Done", 10)
+        mark = checklist_mark(USAGE_LINE)
+    found = (f"opened {'Guardian’s own switch' if seen['own'] else 'the full app list'} ({seen['activity']}); "
+             f"{seen['taps']} taps in Settings, {seen['backs']} Back; Settings showed: {seen['first']}; "
+             f"switch page: {seen['switch page']}; \"{USAGE_LINE}\": {mark}")
+    measurements["GM-CONS-005 Usage access"] = found
+    note("gm_cons_005", found)
+    # Settings calls it "Usage access" on API 29 and "App usage data" on API 36.
+    check(re.search(r"usage access|app usage data", (seen["first"] + seen["switch page"]).lower()) is not None,
+          f"Settings didn't open on Usage access: {found}")
+    check(back, f"Back from Usage access didn't land on page 2: {screen_words(PKG)}; {found}")
+    check(mark == "Done", f"\"{USAGE_LINE}\" isn't ticked after turning Usage access on ({mark}); {found}")
+    check(seen["own"], f"Usage access opened on the full app list, not Guardian's own switch: {found}")
+    sh("input keyevent KEYCODE_HOME")
+
+
+def overlay_in_setup(apk: str, **_) -> None:
+    """GM-CONS-006: on page 2, after Usage access, Continue opens Settings on Display over other
+    apps. On Android 10 that is Guardian's own switch (Guardian passes its package). Android 11
+    and later ignore the package and open the full app list for every app, so there Guardian's
+    instruction shown before Continue has to tell the parent to find Guardian Mode in the list.
+    Either way the switch the instruction names ("Allow display over other apps") must be what
+    Settings shows, and turning it on and pressing Back comes back to page 2 ticked, "All set"."""
+    level = sdk()
+    to_pause_page(apk)
+    # Usage access first, as page 2 asks: allowed from the shell, as a parent would on that screen.
+    top = tap_to_leave_setup("Turn on", "Step 2 of 6")
+    check(top.startswith(SETTINGS + "/"), f"page 2's Turn on didn't open Settings: {top} ({screen_words('')})")
+    sh(f"appops set {PKG} GET_USAGE_STATS allow")
+    back_to_setup()
+    check(wait_for(lambda: showing("Step 2 of 6"), 15, interval=1) is not None, f"Back from Usage access didn't land on page 2: {screen_words(PKG)}")
+    wait_for(lambda: checklist_mark(USAGE_LINE) == "Done", 10)
+    instruction = next_instruction()
+    before = checklist_mark(OVERLAY_LINE)
+    check(before == "Not yet", f"\"{OVERLAY_LINE}\" should be Not yet before Settings ({before}): {screen_words(PKG)}")
+    top = tap_to_leave_setup("Continue", "Step 2 of 6")
+    check(top.startswith(SETTINGS + "/"), f"Continue didn't open Settings: {top} ({screen_words('')})")
+    seen = turn_on_in_settings("SYSTEM_ALERT_WINDOW", "Display over other apps")
+    all_set = wait_for(lambda: find_text("All set") is not None, 15, interval=1) is not None
+    found = (f"API {level}: instruction before: {instruction!r}; opened {'Guardian’s own switch' if seen['own'] else 'the full app list'} "
+             f"({seen['activity']}); {seen['taps']} taps in Settings, {seen['backs']} Back; Settings showed: {seen['first']}; "
+             f"switch page: {seen['switch page']}; page 2 All set after: {all_set}")
+    measurements["GM-CONS-006 Display over other apps"] = found
+    note("gm_cons_006", found)
+    check("display over other apps" in (seen["first"] + seen["switch page"]).lower(), f"Settings didn't open on Display over other apps: {found}")
+    check(all_set, f"page 2 didn't say All set after Display over other apps was turned on: {screen_words(PKG)}; {found}")
+    named = re.findall(r'"([^"]+)"', instruction)
+    check(not instruction.startswith("(no instruction") and all(n.lower() in seen["switch page"].lower() for n in named),
+          f"Guardian's instruction {instruction!r} names something Settings' switch page doesn't show: {found}")
+    if level < 30:
+        check(seen["own"], f"Android 10 can open Guardian's own Display over other apps switch, but it opened the full list: {found}")
+    elif not seen["own"]:
+        check("guardian mode" in instruction.lower() and "list" in instruction.lower(),
+              f"On API {level} Settings opens Display over other apps on the full app list ({seen['taps']} taps to Guardian's switch), "
+              f"but Guardian's instruction {instruction!r} doesn't tell the parent to find Guardian Mode in the list first: {found}")
     sh("input keyevent KEYCODE_HOME")
 
 
@@ -1434,6 +1753,9 @@ CHECKS = [
     ("gm_inst_001_installsAndOpensOnTheRoleChoice", installs_and_opens, True),
     ("gm_inst_011_homeBeforeSetupIsTheOldLauncher", home_before_setup, True),
     ("gm_cons_004_gm_cons_007_gm_cons_009_runtimeDialogsInSetup", consent_android_screens, True),
+    ("gm_cons_003_homeRoleRequestComesBackTicked", home_role_in_setup, True),
+    ("gm_cons_005_usageAccessOpensOnGuardiansSwitch", usage_access_in_setup, True),
+    ("gm_cons_006_displayOverOtherAppsInstructionMatchesSettings", overlay_in_setup, True),
     ("gm_rob_011_reinstallStartsFresh", reinstall_starts_fresh, True),
     ("gm_svc_001_serviceRunsAfterSetup", service_starts, True),
     ("gm_priv_023_noBannedCapabilitiesInPractice", no_banned_capabilities, True),
@@ -1449,6 +1771,14 @@ CHECKS = [
     ("gm_pause_043_gm_svc_006_pauseCardAfterReboot", pause_card_after_reboot, True),
 ]
 
+# Checks for bugs that aren't fixed yet, by check name: the id of their qa/daily/known-bugs.json
+# entry. They assert the right behavior and are skipped unless --include-known-bugs is given
+# (the daily run gives it; a hand-started emulator run may not), like the known-bug markers
+# on the other suites. Remove the entry here and in known-bugs.json with the fix.
+KNOWN_BUGS: dict[str, str] = {
+    "gm_cons_006_displayOverOtherAppsInstructionMatchesSettings": "CONS-OVERLAY-LIST",
+}
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -1457,6 +1787,7 @@ def main() -> int:
     ap.add_argument("--out")
     ap.add_argument("--suite", default="device-host")
     ap.add_argument("--no-device", action="store_true", help="only the checks that read the APK")
+    ap.add_argument("--include-known-bugs", action="store_true", help="also run the checks in KNOWN_BUGS")
     ap.add_argument("--bring-back", action="store_true",
                     help="only make sure the emulator answers adb, cold-starting it if not (run-device-suite.sh, "
                          "after the instrumented suite lost it); exit 1 if it still doesn't")
@@ -1503,6 +1834,11 @@ def main() -> int:
                 print(f"FAIL emulatorAnswersAdb: {e}")
                 print(f"::error title={args.suite} emulator::{str(e)[:3500].replace('%', '%25').replace(chr(10), '%0A')}; the checks from {name} on are skipped")
         case = ET.SubElement(suite, "testcase", classname="DeviceChecks", name=name)
+        known = KNOWN_BUGS.get(name)
+        if known and not args.include_known_bugs:
+            ET.SubElement(case, "skipped", message=f"known bug {known} (qa/daily/known-bugs.json); run with --include-known-bugs")
+            print(f"SKIP {name}: known bug {known}")
+            continue
         if needs_device and emulator_gone:
             ET.SubElement(case, "skipped", message=f"not run: {emulator_gone[:300]}")
             print(f"SKIP {name}: the emulator is gone")
@@ -1523,7 +1859,7 @@ def main() -> int:
             # The report keeps 240 characters of the message and the job log can't be read
             # through the API, so the whole message goes out as an annotation too.
             text = str(e)[:3500].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
-            print(f"::error title={args.suite} {name}::{text}")
+            print(f"::error title={args.suite} {name}{f' [known bug {known}]' if known else ''}::{text}")
         case.set("time", f"{time.time() - start:.1f}")
     # Which checks passed and what they measured, readable through the API like the failures.
     passed = [c.get("name") for c in suite if len(c) == 0]

@@ -26,6 +26,7 @@ The six pages, in order (`ui/onboarding/ConsentPages.kt`):
 ### GM-CONS-003 · Home app role  `P0`
 **Steps:** on Android's home app chooser, pick Guardian Mode and confirm.
 **Expect:** back in setup, "Guardian is the home screen" is ticked. The instruction shown before was "Choose Guardian Mode, then tap "Set as default"." Check that matches what Android actually shows on each API level; if Android's wording is different (it often is), report the difference and the real wording per device.
+**In the cloud:** `device_checks.py` `gm_cons_003_homeRoleRequestComesBackTicked` (API 29 and 36), from a plain install that isn't the home app: page 1's Turn on opens Android's home role request (or Settings' default home app screen where there is none), the dialog must name Guardian Mode and have the instruction's "Set as default", real taps on Guardian Mode and Set as default make Guardian the home app, and setup comes back on page 1 with "Guardian is the home screen" ticked. Android's words and the taps are in the report's measurements. Turn on opens the request straight away, so the instruction only shows when the parent comes back without picking Guardian. Seen on 2026-11-25: both levels show "Set Guardian Mode as your default home app?" with Guardian Mode and Pixel Launcher to pick from, Cancel and "Set as default" (2 taps); the instruction matches. On API 36 holding the home role also allows Display over other apps (page 2 then skips that screen); on API 29 it doesn't.
 
 ### GM-CONS-004 · Phone calls permission  `P0`
 **Expect:** Android's "Allow Guardian Mode to make and manage phone calls?" dialog. After Allow, the checklist ticks it, all items done, "All set" and a "Next" button.
@@ -34,9 +35,12 @@ The six pages, in order (`ui/onboarding/ConsentPages.kt`):
 ### GM-CONS-005 · Usage access deep link lands on Guardian's switch  `P0`
 **Steps:** page 2, Turn on, Continue.
 **Expect:** Settings opens on Usage access, ideally straight on Guardian's entry. Turn it on, press Back: you're back in setup with it ticked. Record per device whether it opened the list or Guardian's own switch, and how many taps it took. If Settings refuses ("restricted setting"), see GM-CONS-012.
+**In the cloud:** `device_checks.py` `gm_cons_005_usageAccessOpensOnGuardiansSwitch` (API 29 and 36): page 2's Turn on must open Usage access on Guardian's own switch (its name and one switch), not the full list; a real tap on the switch allows it, Back returns to page 2 with "Can tell which app is open" ticked. Which screen opened, its words, and the taps and Back presses are in the measurements. Seen on 2026-11-25: Guardian's own switch on both levels, 1 tap and 1 Back. API 29 calls it "Usage access" / "Permit usage access", API 36 "App usage data" / "Permit access to app usage data".
 
 ### GM-CONS-006 · Display over other apps  `P0`
 **Expect:** Settings opens on Guardian's "Display over other apps" switch. After turning it on and pressing Back, it's ticked.
+Android 11 and later ignore the app's package for this screen and always open the full app list, so there the instruction shown before Continue must tell the parent to find Guardian Mode in the list.
+**In the cloud:** `device_checks.py` `gm_cons_006_displayOverOtherAppsInstructionMatchesSettings` (API 29 and 36): Usage access first, then Guardian's instruction is read and Continue tapped. On API 29 Settings must open Guardian's own switch; on API 30+ the list, and then the instruction must say to find Guardian Mode in it. The switch the instruction names must be on Settings' switch page; real taps (Guardian Mode in the list, then the switch) and Back give "All set". Known bug CONS-OVERLAY-LIST: the instruction doesn't mention the list. Seen on 2026-11-25: API 29 opens Guardian's own "Allow display over other apps" switch (1 tap, 1 Back); API 36 opens the full list (Guardian Mode among Google's apps), 2 taps and 2 Backs.
 
 ### GM-CONS-007 · Call screening role, phone state and contacts  `P0`
 **Steps:** page 3. Grant all three, one at a time.

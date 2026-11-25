@@ -43,6 +43,7 @@ Its PRs wait for Nate's "merge" like everything else.
   - Android unit (JUnit 4): `@Category(KnownBug::class)`
   - Android device: `@KnownBug("S-03")` from `support/`
   - vitest / Playwright: `it.skipIf(!process.env.INCLUDE_KNOWN_BUGS)(...)`, with "[known bug S-17]" in the title
+  - host checks (`device_checks.py`): the check's name in `KNOWN_BUGS` with the entry's id; skipped unless `--include-known-bugs`
   - Gradle: `-PincludeKnownBugs=true` runs them locally.
 - **Device tests** use `support/DeviceRule` (fast setup, state reset, time limits on every shell command and a 15-minute limit per test, the CPU kept awake, UI dump on failure), `EmulatorConsole` for real calls, and `StubApp` for the stand-ins. Stand-ins for remote-control apps aren't pre-installed; tests install them from `/data/local/tmp/stubs/<flavor>.apk`.
 
