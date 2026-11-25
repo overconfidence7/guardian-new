@@ -1409,9 +1409,19 @@ def memory(apk: str, shrunk_apk: str | None = None, **_) -> None:
     measured = shrunk_apk or apk
     fresh_app(measured)
     time.sleep(5)
-    out = sh(f"dumpsys meminfo {PKG}")
-    m = re.search(r"TOTAL PSS:\s+(\d+)", out) or re.search(r"^\s*TOTAL\s+(\d+)", out, re.M)
-    check(m is not None, "couldn't read PSS from dumpsys meminfo")
+    # dumpsys meminfo sometimes comes back empty or cut short on the API 29 emulator
+    # (2026-11-24), so read it up to three times and, if it never parses, say what it returned.
+    out, m = "", None
+    for _ in range(3):
+        out = sh(f"dumpsys meminfo {PKG}")
+        m = re.search(r"TOTAL PSS:\s+(\d+)", out) or re.search(r"^\s*TOTAL\s+(\d+)", out, re.M)
+        if m:
+            break
+        time.sleep(3)
+    if m is None:
+        pid = sh(f"pidof {PKG}").strip() or "none"
+        head = " ".join(out.split())[:300] or "(empty)"
+        raise CheckFailed(f"couldn't read PSS from dumpsys meminfo (3 tries; pid: {pid}; output: {head})")
     mb = int(m.group(1)) / 1024
     build = "shrunk build" if shrunk_apk else "debug build"
     measurements["Home screen PSS"] = f"{mb:.0f} MB ({build})"
