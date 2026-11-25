@@ -1,10 +1,3 @@
 {
-  "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change.",
-  "CONS-OVERLAY-LIST": {
-    "title": "On Android 11+ \"Display over other apps\" opens on the full app list, but setup's instruction (ConsentPages.instruction(OVERLAY)) only says to turn the switch on, not to find Guardian Mode in the list first (GM-CONS-006)",
-    "owner": "Antigravity test suite thread",
-    "tests": [
-      "gm_cons_006_displayOverOtherAppsInstructionMatchesSettings"
-    ]
-  }
+  "_readme": "Failures we already know about, so the daily report can tell them from new breakage. Each entry lists substrings of the test names that show the bug. Tests for these are marked known-bug in code (see README.md) so pull-request CI skips them. When the fix lands, delete the entry and the known-bug marker in the same change."
 }
