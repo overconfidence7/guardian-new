@@ -1086,19 +1086,23 @@ def ticked(line: str) -> bool:
 
 
 def next_instruction() -> str:
-    """Guardian's "On the next screen" instruction on the current consent page, or ""."""
-    for i in range(3):
+    """Guardian's "On the next screen" instruction on the current consent page, or "" with
+    what the page showed. It sits right above Continue, so the page is scrolled until Continue
+    shows and the line before it is read (reading the line after the label came back empty on
+    API 29 and 36 on 11-25, with the label the last line on screen)."""
+    texts: list[str] = []
+    for i in range(4):
         texts = [n["text"] for n in ui_nodes() if n["pkg"] == PKG and n["text"]]
-        if "On the next screen" in texts:
-            at = texts.index("On the next screen")
-            # The label can be the last line on screen with the instruction below the fold
-            # (11-25 branch run, API 29 and 36): then scroll and read again.
-            if at + 1 < len(texts) and texts[at + 1] not in ("Continue", "Skip for now"):
-                return texts[at + 1]
-        if i < 2:
-            sh("input swipe 540 1500 540 1000 300")
+        if "Continue" in texts:
+            at = texts.index("Continue")
+            if at >= 2 and texts[at - 2] == "On the next screen":
+                return texts[at - 1]
+            if "On the next screen" in texts[:at]:
+                return " ".join(texts[texts.index("On the next screen") + 1:at])
+        if i < 3:
+            sh("input swipe 540 1700 540 900 300")
             time.sleep(1)
-    return ""
+    return f"(no instruction found; the page showed: {' | '.join(texts)[-400:]})"
 
 
 def tap_to_leave_setup(text: str, page: str) -> str:
@@ -1302,7 +1306,7 @@ def overlay_in_setup(apk: str, **_) -> None:
     check("display over other apps" in (seen["first"] + seen["switch page"]).lower(), f"Settings didn't open on Display over other apps: {found}")
     check(all_set, f"page 2 didn't say All set after Display over other apps was turned on: {screen_words(PKG)}; {found}")
     named = re.findall(r'"([^"]+)"', instruction)
-    check(instruction != "" and all(n.lower() in seen["switch page"].lower() for n in named),
+    check(not instruction.startswith("(no instruction") and all(n.lower() in seen["switch page"].lower() for n in named),
           f"Guardian's instruction {instruction!r} names something Settings' switch page doesn't show: {found}")
     if level < 30:
         check(seen["own"], f"Android 10 can open Guardian's own Display over other apps switch, but it opened the full list: {found}")
