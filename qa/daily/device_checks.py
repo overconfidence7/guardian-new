@@ -1100,9 +1100,11 @@ def next_instruction() -> str:
 
 def tap_to_leave_setup(text: str, page: str) -> str:
     """Taps [text] on consent page [page] until Guardian is no longer in front (a tap right
-    after a page change can be lost). Returns the activity that came up."""
+    after a page change can be lost). Returns the activity that came up. Whether setup is still
+    in front is read from the activity: the page's step line and title scroll off the top on
+    the way down to the button."""
     for _ in range(3):
-        if showing(page):
+        if top_activity().startswith(PKG + "/"):
             tap_text_scrolling(text, swipes=2)
         if wait_for(lambda: not top_activity().startswith(PKG + "/"), 10, interval=0.5) is not None:
             time.sleep(1)
@@ -1210,6 +1212,8 @@ def home_role_in_setup(apk: str, **_) -> None:
     else:
         check(False, f"page 1's Turn on opened neither Android's home role request nor Settings: {top} ({screen_words('')})")
     holder = wait_for(lambda: PKG in home_holders(), 15)
+    # Whether the role brought Display over other apps with it (on API 36 page 2 found it allowed).
+    found.append(f"after the role, {sh(f'appops get {PKG} SYSTEM_ALERT_WINDOW').strip()[:80] or 'SYSTEM_ALERT_WINDOW: default'}")
     back = wait_for(lambda: showing("Step 1 of 6"), 20, interval=1)
     after = f"back on page 1: {back is not None} ({top_activity().split('/')[-1]})"
     mark = checklist_mark(HOME_LINE) if back is not None else "not on page 1"
@@ -1226,12 +1230,13 @@ def home_role_in_setup(apk: str, **_) -> None:
 
 
 def to_pause_page(apk: str) -> None:
-    """A plain install with page 1's roles and permissions already granted, walked to page 2
-    ("Pause before sending money"), which asks for Usage access and then Display over other apps."""
-    install_into_setup(apk, [
-        f"cmd role add-role-holder android.app.role.HOME {PKG}",
-        f"cmd role add-role-holder android.app.role.CALL_SCREENING {PKG}",
-    ] + [f"pm grant {PKG} android.permission.{p}" for p in ("CALL_PHONE", "READ_PHONE_STATE", "READ_CONTACTS")])
+    """A plain install walked to page 2 ("Pause before sending money"), which asks for Usage
+    access and then Display over other apps, as a parent who said "Not now" on page 1. Not
+    with the home role: on API 36 holding it already allowed Display over other apps, so page 2
+    never opened that screen (11-25 branch run)."""
+    install_into_setup(apk, [])
+    for op in ("GET_USAGE_STATS", "SYSTEM_ALERT_WINDOW"):
+        check(not op_allowed(op), f"{op} is allowed straight after a plain install: {sh(f'appops get {PKG} {op}').strip()[:120]}")
     check(tap_until("Not now", "Step 2 of 6", "Step 1 of 6"), f"page 2 didn't follow: {screen_words(PKG)}")
 
 
@@ -1245,8 +1250,8 @@ def usage_access_in_setup(apk: str, **_) -> None:
     check(top.startswith(SETTINGS + "/"), f"page 2's Turn on didn't open Settings: {top} ({screen_words('')})")
     seen = turn_on_in_settings("GET_USAGE_STATS", "Usage access")
     back = wait_for(lambda: showing("Step 2 of 6"), 15, interval=1) is not None
-    mark = checklist_mark(USAGE_LINE) if back else "not on page 2"
-    if back and mark != "Done":
+    mark = "not on page 2"
+    if back:
         wait_for(lambda: checklist_mark(USAGE_LINE) == "Done", 10)
         mark = checklist_mark(USAGE_LINE)
     found = (f"opened {'Guardian’s own switch' if seen['own'] else 'the full app list'} ({seen['activity']}); "
@@ -1254,7 +1259,9 @@ def usage_access_in_setup(apk: str, **_) -> None:
              f"switch page: {seen['switch page']}; \"{USAGE_LINE}\": {mark}")
     measurements["GM-CONS-005 Usage access"] = found
     note("gm_cons_005", found)
-    check("usage access" in (seen["first"] + seen["switch page"]).lower(), f"Settings didn't open on Usage access: {found}")
+    # Settings calls it "Usage access" on API 29 and "App usage data" on API 36.
+    check(re.search(r"usage access|app usage data", (seen["first"] + seen["switch page"]).lower()) is not None,
+          f"Settings didn't open on Usage access: {found}")
     check(back, f"Back from Usage access didn't land on page 2: {screen_words(PKG)}; {found}")
     check(mark == "Done", f"\"{USAGE_LINE}\" isn't ticked after turning Usage access on ({mark}); {found}")
     check(seen["own"], f"Usage access opened on the full app list, not Guardian's own switch: {found}")
