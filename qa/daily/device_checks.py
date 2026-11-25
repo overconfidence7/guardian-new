@@ -1087,13 +1087,16 @@ def ticked(line: str) -> bool:
 
 def next_instruction() -> str:
     """Guardian's "On the next screen" instruction on the current consent page, or ""."""
-    for i in range(2):
+    for i in range(3):
         texts = [n["text"] for n in ui_nodes() if n["pkg"] == PKG and n["text"]]
         if "On the next screen" in texts:
             at = texts.index("On the next screen")
-            return texts[at + 1] if at + 1 < len(texts) else ""
-        if i == 0:
-            sh("input swipe 540 1700 540 900 300")
+            # The label can be the last line on screen with the instruction below the fold
+            # (11-25 branch run, API 29 and 36): then scroll and read again.
+            if at + 1 < len(texts) and texts[at + 1] not in ("Continue", "Skip for now"):
+                return texts[at + 1]
+        if i < 2:
+            sh("input swipe 540 1500 540 1000 300")
             time.sleep(1)
     return ""
 
