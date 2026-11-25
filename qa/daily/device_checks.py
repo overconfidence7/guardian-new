@@ -1098,7 +1098,12 @@ def next_instruction() -> str:
             if at >= 2 and texts[at - 2] == "On the next screen":
                 return texts[at - 1]
             if "On the next screen" in texts[:at]:
-                return " ".join(texts[texts.index("On the next screen") + 1:at])
+                between = " ".join(texts[texts.index("On the next screen") + 1:at])
+                if between:
+                    return between
+                xml = ui_dump()
+                label = xml.find("On the next screen")
+                return f"(no instruction found; the dump around its label: {xml[max(0, label - 100):label + 700]})"
         if i < 3:
             sh("input swipe 540 1700 540 900 300")
             time.sleep(1)
