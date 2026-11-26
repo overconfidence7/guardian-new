@@ -1775,9 +1775,7 @@ CHECKS = [
 # entry. They assert the right behavior and are skipped unless --include-known-bugs is given
 # (the daily run gives it; a hand-started emulator run may not), like the known-bug markers
 # on the other suites. Remove the entry here and in known-bugs.json with the fix.
-KNOWN_BUGS: dict[str, str] = {
-    "gm_cons_006_displayOverOtherAppsInstructionMatchesSettings": "CONS-OVERLAY-LIST",
-}
+KNOWN_BUGS: dict[str, str] = {}
 
 
 def main() -> int:
