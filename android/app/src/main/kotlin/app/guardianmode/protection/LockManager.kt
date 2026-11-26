@@ -60,18 +60,33 @@ class LockManager(
         store.update { it.copy(lockCodeHash = LockCode.hash(code, salt), lockCodeSalt = salt, lockFailures = 0, lockRetryAt = 0) }
     }
 
+    /**
+     * Checks the code against the saved state inside one store update. `store.current` can
+     * trail a write that just finished (it follows the store's flow), so a check made right
+     * after setCode, or two quick tries, used to read the old code or the old failure count.
+     */
     suspend fun tryUnlock(code: String): UnlockResult {
         val now = clock()
-        val s = store.current
-        if (s.lockRetryAt > now) return UnlockResult.Wait(s.lockRetryAt)
-        if (LockCode.matches(code, s.lockCodeSalt, s.lockCodeHash)) {
-            store.update { it.copy(unlockedUntil = now + LockPolicy.UNLOCK_MILLIS, lockFailures = 0, lockRetryAt = 0) }
-            return UnlockResult.Unlocked
+        var result: UnlockResult = UnlockResult.Wrong
+        store.update { s ->
+            when {
+                s.lockRetryAt > now -> {
+                    result = UnlockResult.Wait(s.lockRetryAt)
+                    s
+                }
+                LockCode.matches(code, s.lockCodeSalt, s.lockCodeHash) -> {
+                    result = UnlockResult.Unlocked
+                    s.copy(unlockedUntil = now + LockPolicy.UNLOCK_MILLIS, lockFailures = 0, lockRetryAt = 0)
+                }
+                else -> {
+                    val failures = s.lockFailures + 1
+                    val wait = LockCode.waitAfter(failures)
+                    result = if (wait > 0) UnlockResult.Wait(now + wait) else UnlockResult.Wrong
+                    s.copy(lockFailures = failures, lockRetryAt = if (wait > 0) now + wait else 0)
+                }
+            }
         }
-        val failures = s.lockFailures + 1
-        val wait = LockCode.waitAfter(failures)
-        store.update { it.copy(lockFailures = failures, lockRetryAt = if (wait > 0) now + wait else 0) }
-        return if (wait > 0) UnlockResult.Wait(now + wait) else UnlockResult.Wrong
+        return result
     }
 
     /** Locks again straight away, for when the parent is done with an unlocked app. */
