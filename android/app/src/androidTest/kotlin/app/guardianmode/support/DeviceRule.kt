@@ -743,6 +743,10 @@ class DeviceRule(
      */
     fun tapOn(selector: BySelector) {
         waitFor(selector, 3_000)
+        // A code screen focuses its field and the keyboard slides up a moment later. Putting it
+        // away before it was up let it come up over the target, so the tap landed on a key
+        // (gm_lock_032 on API 33, daily run 45993459389: "Go to my home screen" under the keyboard).
+        if (has(By.desc("Lock code"))) waitUntil(1_500) { keyboardShown() }
         hideKeyboard()
         check(seen(selector, 500)) { dumpUi("not found: $selector"); "Nothing on screen matches $selector" }
         var matches = findAll(selector)
@@ -779,6 +783,11 @@ class DeviceRule(
         // finger would; UiObject2.click taps the same spot.
         var current = target
         repeat(5) { attempt ->
+            // The keyboard can still come up late; never tap through it.
+            if (keyboardShown()) {
+                hideKeyboard()
+                current = findAgain(selector) ?: current
+            }
             val center = try {
                 current.visibleCenter
             } catch (e: androidx.test.uiautomator.StaleObjectException) {
